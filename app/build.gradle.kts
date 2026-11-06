@@ -44,5 +44,6 @@ android {
 
 dependencies {
     implementation("com.android.ndk.thirdparty:openssl:1.1.1q-beta-1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     testImplementation("junit:junit:4.13.2")
 }
