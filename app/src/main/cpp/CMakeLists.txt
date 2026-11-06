@@ -23,7 +23,7 @@ set(PLAYFAIR_SRCS
     uxplay/playfair/modified_md5.c uxplay/playfair/omg_hax.c uxplay/playfair/sap_hash.c)
 set(LLHTTP_SRCS uxplay/llhttp/api.c uxplay/llhttp/http.c uxplay/llhttp/llhttp.c)
 
-add_library(kairocast SHARED jni_bridge.c ${UXPLAY_SRCS} ${PLAYFAIR_SRCS} ${LLHTTP_SRCS})
+add_library(kairocast SHARED jni_bridge.c kairo_server.c ${UXPLAY_SRCS} ${PLAYFAIR_SRCS} ${LLHTTP_SRCS})
 target_include_directories(kairocast PRIVATE uxplay uxplay/playfair uxplay/llhttp)
 target_compile_definitions(kairocast PRIVATE
     NOHOLD PLIST_210 PLIST_230 STANDALONE TARGET_POSIX _LINUX _REENTRANT
