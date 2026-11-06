@@ -1,0 +1,10 @@
+.autopilot/
+.android-sdk/
+build/
+.gradle/
+local.properties
+*.iml
+.idea/
+.cxx/
+.DS_Store
+.worktrees/
