@@ -17,11 +17,25 @@ android {
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DANDROID_STL=c++_shared")
+            }
+        }
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        prefab = true
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
     kotlinOptions {
         jvmTarget = "17"
@@ -29,5 +43,6 @@ android {
 }
 
 dependencies {
+    implementation("com.android.ndk.thirdparty:openssl:1.1.1q-beta-1")
     testImplementation("junit:junit:4.13.2")
 }
