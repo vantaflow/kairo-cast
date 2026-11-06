@@ -1,0 +1,56 @@
+package com.vantaflow.kairo.cast
+
+import java.util.Random
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class CastSettingsTest {
+    private class MapStore : KeyValueStore {
+        val map = HashMap<String, String>()
+        override fun getString(k: String) = map[k]
+        override fun putString(k: String, v: String) { map[k] = v }
+    }
+
+    @Test fun defaults() {
+        val s = CastSettings(MapStore(), Random(1))
+        assertEquals("Kairo", s.name)
+        assertEquals(DisplayMode.FILL, s.displayMode)
+        assertTrue(s.audioEnabled)
+        assertTrue(s.startOnBoot)
+        assertTrue(Regex("^([0-9a-f]{2}:){5}[0-9a-f]{2}$").matches(s.deviceId))
+    }
+
+    @Test fun deviceIdStable() {
+        val store = MapStore()
+        val a = CastSettings(store, Random(1)).deviceId
+        assertEquals(a, CastSettings(store, Random(2)).deviceId)
+    }
+
+    @Test fun unknownDisplayModeFallsBack() {
+        val store = MapStore()
+        store.putString("display_mode", "WAT")
+        assertEquals(DisplayMode.FILL, CastSettings(store, Random(1)).displayMode)
+    }
+
+    @Test fun roundTrip() {
+        val store = MapStore()
+        val s = CastSettings(store, Random(1))
+        s.displayMode = DisplayMode.FIT
+        s.audioEnabled = false
+        s.startOnBoot = false
+        s.name = "Salon"
+        val t = CastSettings(store, Random(1))
+        assertEquals(DisplayMode.FIT, t.displayMode)
+        assertFalse(t.audioEnabled)
+        assertFalse(t.startOnBoot)
+        assertEquals("Salon", t.name)
+    }
+
+    @Test fun emptyNameBecomesDefault() {
+        val s = CastSettings(MapStore(), Random(1))
+        s.name = ""
+        assertEquals("Kairo", s.name)
+    }
+}
