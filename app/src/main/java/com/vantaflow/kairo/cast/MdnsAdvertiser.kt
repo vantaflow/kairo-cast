@@ -5,12 +5,15 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.util.Log
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class MdnsAdvertiser(ctx: Context) {
     private val app = ctx.applicationContext
     private val nsd = app.getSystemService(Context.NSD_SERVICE) as NsdManager
     private var lock: WifiManager.MulticastLock? = null
     private val listeners = ArrayList<NsdManager.RegistrationListener>()
+    private val pending = ArrayList<CountDownLatch>()
 
     @Synchronized
     fun register(
@@ -37,32 +40,49 @@ class MdnsAdvertiser(ctx: Context) {
             this.port = port
             txt.forEach { (k, v) -> setAttribute(k, v) }
         }
+        val done = CountDownLatch(1)
+        pending.add(done)
         val l = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(i: NsdServiceInfo) {
                 Log.i(TAG, "annonce $type enregistrée : ${i.serviceName}")
             }
             override fun onRegistrationFailed(i: NsdServiceInfo, code: Int) {
                 Log.e(TAG, "annonce $type refusée ($code)")
+                done.countDown()
             }
             override fun onServiceUnregistered(i: NsdServiceInfo) {
                 Log.i(TAG, "annonce $type retirée")
+                done.countDown()
             }
             override fun onUnregistrationFailed(i: NsdServiceInfo, code: Int) {
                 Log.w(TAG, "retrait $type échoué ($code)")
+                done.countDown()
             }
         }
         listeners.add(l)
         nsd.registerService(info, NsdManager.PROTOCOL_DNS_SD, l)
     }
 
+    /** Bloquant (jusqu'à ~3 s) : ne pas appeler depuis le thread principal. */
     @Synchronized
     fun unregister() {
-        listeners.forEach {
-            try { nsd.unregisterService(it) } catch (e: IllegalArgumentException) { /* jamais enregistré */ }
+        try {
+            listeners.forEach {
+                try { nsd.unregisterService(it) } catch (e: Exception) { Log.w(TAG, "retrait ignoré : $e") }
+            }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+            pending.forEach {
+                val left = deadline - System.nanoTime()
+                if (left > 0) it.await(left, TimeUnit.NANOSECONDS)
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } finally {
+            listeners.clear()
+            pending.clear()
+            try { lock?.let { if (it.isHeld) it.release() } } catch (e: Exception) { }
+            lock = null
         }
-        listeners.clear()
-        lock?.let { if (it.isHeld) it.release() }
-        lock = null
     }
 
     private companion object {
