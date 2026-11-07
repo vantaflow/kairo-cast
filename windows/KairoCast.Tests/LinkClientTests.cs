@@ -104,7 +104,7 @@ public class LinkClientTests
         var (l, ep) = Listen();
         var c = new LinkClient(TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(2));
         var done = new TaskCompletionSource();
-        c.KeyFrameRequested += () => { c.DisposeAsync().AsTask().Wait(); done.TrySetResult(); };
+        c.KeyFrameRequested += async () => { await c.DisposeAsync(); done.TrySetResult(); };
         var accept = l.AcceptTcpClientAsync();
         await c.ConnectAsync(ep, H, CancellationToken.None);
         using var srv = await accept;

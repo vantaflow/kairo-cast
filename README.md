@@ -48,10 +48,10 @@ JDK 17, SDK Android 34, NDK 27.2.12479018 :
 
 ## Windows
 
-Kairo Cast existe aussi pour Windows : une petite appli qui envoie l'écran et le son du PC vers la box. Windows ne sait pas le faire nativement avec Win+K vers un récepteur AirPlay, d'où cette appli.
+Kairo Cast existe aussi pour Windows : une petite appli qui envoie l'écran et le son du PC vers la box. Windows ne sait pas envoyer l'écran vers un récepteur AirPlay, d'où cette appli. Le Miracast natif de Windows vers la box n'est pas possible : une appli Android ne peut pas être récepteur Miracast sans droits système.
 
-- **Installation** : télécharger `KairoCast-windows.exe` depuis la release. Il n'est pas signé : SmartScreen affiche un avertissement, cliquer sur « Informations complémentaires › Exécuter quand même ».
-- **Utilisation** : Win+K puis Kairo, ou l'icône près de l'horloge.
+- **Installation** : l'exécutable est pour l'instant produit par la CI sous forme d'artefact `KairoCast-windows` ; il sera joint à la prochaine release. Il n'est pas signé : SmartScreen affiche un avertissement, cliquer sur « Informations complémentaires › Exécuter quand même ».
+- **Utilisation** : l'appli KairoCast intercepte Win+K et ouvre son propre panneau, où Kairo apparaît en premier (avec un lien vers le panneau natif de Windows). On peut aussi utiliser l'icône près de l'horloge.
 - **Pare-feu** : au premier partage, Windows demande d'autoriser l'appli ; accepter « Réseau privé ».
 - **Prérequis** : Windows 10 1903 ou plus récent, ou Windows 11.
 - **Journal** : `%LOCALAPPDATA%\KairoCast\log.txt`.

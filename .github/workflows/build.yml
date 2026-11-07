@@ -52,3 +52,4 @@ jobs:
         with:
           name: KairoCast-windows
           path: out/KairoCast-windows.exe
+          if-no-files-found: error
