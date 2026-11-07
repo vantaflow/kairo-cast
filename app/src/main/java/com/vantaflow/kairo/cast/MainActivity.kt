@@ -43,8 +43,9 @@ class MainActivity : Activity() {
         super.onResume()
         val settings = CastSettings(PrefsStore(this))
         val names = settings.slotNames
+        single = names.size == 1
         findViewById<TextView>(R.id.ip).text = getString(R.string.ip_label, NetworkInfo.localIpv4(this) ?: getString(R.string.not_connected))
-        findViewById<TextView>(R.id.instruction).text = getString(R.string.instruction, names.joinToString(" / "))
+        findViewById<TextView>(R.id.instruction).text = getString(if (names.size == 1) R.string.instruction_single else R.string.instruction, names.joinToString(" / "))
         findViewById<TextView>(R.id.instruction_pc).text = getString(R.string.instruction_pc, names.joinToString(" / "))
         collector = scope.launch {
             SlotsState.slots.collect { renderSlots(names, it) }
@@ -56,6 +57,7 @@ class MainActivity : Activity() {
     }
 
     private var collector2: Job? = null
+    private var single = true
 
     private fun phaseLabel(s: SlotState?): String = when (s?.phase) {
         SlotPhase.MIRRORING -> getString(R.string.slot_mirroring, s.width, s.height)
@@ -73,7 +75,6 @@ class MainActivity : Activity() {
             val st = states.firstOrNull { it.slot == i }
             if (single) {
                 box.addView(line(name, 56f, R.color.kairo_text, true))
-                if (st?.phase != SlotPhase.WAITING) box.addView(line(phaseLabel(st), 20f, R.color.kairo_muted, false))
             } else {
                 box.addView(line("$name  ·  ${phaseLabel(st)}", 28f, R.color.kairo_text, true))
             }
@@ -91,14 +92,19 @@ class MainActivity : Activity() {
     private fun render(s: Status) {
         when (s) {
             is Status.Mirroring -> {
-                statusView.text = ""
+                statusView.text = if (single && s is Status.Mirroring) getString(R.string.status_mirroring, s.width, s.height) else ""
                 if (resume.visibility != View.VISIBLE) {
                     resume.visibility = View.VISIBLE
                     resume.requestFocus()
                 }
             }
             else -> {
-                statusView.text = if (s == Status.Stopped) getString(R.string.status_stopped) else ""
+                statusView.text = when {
+                    s == Status.Stopped -> getString(R.string.status_stopped)
+                    !single -> ""
+                    s == Status.MacWaiting -> getString(R.string.status_mac_waiting)
+                    else -> getString(R.string.status_waiting)
+                }
                 resume.visibility = View.GONE
             }
         }

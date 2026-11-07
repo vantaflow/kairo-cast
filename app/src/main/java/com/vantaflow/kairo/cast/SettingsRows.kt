@@ -3,26 +3,25 @@ package com.vantaflow.kairo.cast
 data class SettingsRow(val id: String, val enabled: Boolean, val value: String)
 
 object SettingsRows {
-    const val QUALITY_FIXED = "fixé par le nombre de sources"
+    /** Textes fournis par l'appelant (ressources strings.xml). */
+    interface Labels {
+        fun sourceN(n: Int, name: String): String
+        fun qualityFixed(): String
+        fun quality(q: StreamQuality): String
+    }
 
     data class Snapshot(val slotCount: Int, val names: List<String>, val quality: StreamQuality)
 
     /** Une ligne « name » (valeur = le nom) si 1 source, sinon « name_i » avec « Source n : nom ». */
-    fun nameRows(settings: CastSettings): List<SettingsRow> {
+    fun nameRows(settings: CastSettings, labels: Labels): List<SettingsRow> {
         val n = settings.slotCount
         if (n == 1) return listOf(SettingsRow("name", true, settings.slotName(0)))
-        return (0 until n).map { SettingsRow("name_$it", true, "Source ${it + 1} : ${settings.slotName(it)}") }
+        return (0 until n).map { SettingsRow("name_$it", true, labels.sourceN(it + 1, settings.slotName(it))) }
     }
 
-    fun qualityLabel(q: StreamQuality): String = when (q) {
-        StreamQuality.HD -> "Standard (1200p)"
-        StreamQuality.QHD -> "Haute (1600p)"
-        StreamQuality.UHD -> "Maximale (2160p)"
-    }
-
-    fun qualityRow(settings: CastSettings): SettingsRow =
-        if (settings.slotCount == 1) SettingsRow("quality", true, qualityLabel(settings.quality))
-        else SettingsRow("quality", false, QUALITY_FIXED)
+    fun qualityRow(settings: CastSettings, labels: Labels): SettingsRow =
+        if (settings.slotCount == 1) SettingsRow("quality", true, labels.quality(settings.quality))
+        else SettingsRow("quality", false, labels.qualityFixed())
 
     fun nextSlotCount(cur: Int): Int = when (cur) { 1 -> 2; 2 -> 4; else -> 1 }
 

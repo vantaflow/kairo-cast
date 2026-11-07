@@ -51,7 +51,7 @@ class CastSettings(
         checkSlot(slot)
         val blank = raw.filter { it != '@' && !Character.isISOControl(it) }.isBlank()
         val name = if (blank) SlotIdentity.defaultName(slot) else ReceiverName.normalize(raw)
-        val taken = (0 until MAX_SLOTS).any { it != slot && slotName(it).equals(name, ignoreCase = true) }
+        val taken = (0 until slotCount).any { it != slot && slotName(it).equals(name, ignoreCase = true) }
         if (taken) return NameResult.Duplicate
         store.putString(SlotIdentity.nameKey(slot), name)
         NameResult.Ok

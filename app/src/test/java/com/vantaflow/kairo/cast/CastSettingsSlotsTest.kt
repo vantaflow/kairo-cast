@@ -65,11 +65,11 @@ class CastSettingsSlotsTest {
         assertEquals("Bureau", s.slotName(1))
     }
 
-    @Test fun duplicateAgainstHiddenSlot() {
+    @Test fun hiddenSlotNameDoesNotBlock() {
         val store = FakeStore()
         store.map["slot_count"] = "2"
         store.map["slot3_name"] = "Cuisine"
-        assertEquals(NameResult.Duplicate, settings(store).setSlotName(1, "cuisine"))
+        assertEquals(NameResult.Ok, settings(store).setSlotName(1, "cuisine"))
     }
 
     @Test fun emptyNameFallsBackToDefaultOfSlot() {
@@ -83,6 +83,7 @@ class CastSettingsSlotsTest {
 
     @Test fun legacyNameSetterRefusesDuplicate() {
         val s = settings()
+        s.slotCount = 2
         s.setSlotName(1, "Bureau")
         s.name = "bureau"
         assertEquals("Kairo", s.name)

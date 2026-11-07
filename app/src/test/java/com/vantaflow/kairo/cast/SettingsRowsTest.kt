@@ -5,6 +5,11 @@ import org.junit.Test
 import java.util.Random
 
 class SettingsRowsTest {
+    private val labels = object : SettingsRows.Labels {
+        override fun sourceN(n: Int, name: String) = "Source $n : $name"
+        override fun qualityFixed() = "fixé"
+        override fun quality(q: StreamQuality) = "Q-" + q.name
+    }
     private class MemStore : KeyValueStore {
         val m = HashMap<String, String>()
         override fun getString(k: String) = m[k]
@@ -20,21 +25,21 @@ class SettingsRowsTest {
         SettingsRows.Snapshot(count, names, q)
 
     @Test fun singleSourceKeepsOneNameRow() {
-        val rows = SettingsRows.nameRows(settings(1))
+        val rows = SettingsRows.nameRows(settings(1), labels)
         assertEquals(listOf("name"), rows.map { it.id })
         assertEquals("Kairo", rows[0].value)
     }
     @Test fun fourSourcesFourRows() {
-        val rows = SettingsRows.nameRows(settings(4))
+        val rows = SettingsRows.nameRows(settings(4), labels)
         assertEquals(listOf("name_0", "name_1", "name_2", "name_3"), rows.map { it.id })
         assertEquals("Source 1 : Kairo", rows[0].value)
         assertEquals("Source 2 : Kairo 2", rows[1].value)
     }
     @Test fun qualityDisabledFromTwoSources() {
-        assertTrue(SettingsRows.qualityRow(settings(1)).enabled)
-        val r = SettingsRows.qualityRow(settings(2))
+        assertTrue(SettingsRows.qualityRow(settings(1), labels).enabled)
+        val r = SettingsRows.qualityRow(settings(2), labels)
         assertFalse(r.enabled)
-        assertEquals("fixé par le nombre de sources", r.value)
+        assertEquals("fixé", r.value)
     }
     @Test fun slotCountCycle() {
         assertEquals(2, SettingsRows.nextSlotCount(1))
@@ -50,8 +55,5 @@ class SettingsRowsTest {
     }
     @Test fun restartIgnoresHiddenSlotNames() {
         assertFalse(SettingsRows.needsRestart(snap(2, listOf("A", "B", "C", "D")), snap(2, listOf("A", "B", "Z", "D"))))
-    }
-    @Test fun qualityLabelsMatchSizes() {
-        assertEquals("Standard (1200p)", SettingsRows.qualityLabel(StreamQuality.HD))
     }
 }

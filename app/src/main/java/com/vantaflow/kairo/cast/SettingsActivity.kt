@@ -19,6 +19,15 @@ import android.widget.Toast
 class SettingsActivity : Activity() {
     private lateinit var settings: CastSettings
     private lateinit var rows: LinearLayout
+    private val labels = object : SettingsRows.Labels {
+        override fun sourceN(n: Int, name: String) = getString(R.string.source_n, n, name)
+        override fun qualityFixed() = getString(R.string.quality_fixed)
+        override fun quality(q: StreamQuality) = getString(when (q) {
+            StreamQuality.HD -> R.string.quality_hd
+            StreamQuality.QHD -> R.string.quality_qhd
+            StreamQuality.UHD -> R.string.quality_uhd
+        })
+    }
     private var start = SettingsRows.Snapshot(1, emptyList(), StreamQuality.QHD)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,14 +65,18 @@ class SettingsActivity : Activity() {
             build()
         }
         note(getString(R.string.set_count_help))
-        val nameRows = SettingsRows.nameRows(settings)
+        val nameRows = SettingsRows.nameRows(settings, labels)
         if (nameRows.size == 1) {
             row(getString(R.string.set_name), nameRows[0].value) { editName(0) }
         } else {
             nameRows.forEachIndexed { i, r -> row(r.value, getString(R.string.modify)) { editName(i) } }
         }
-        val q = SettingsRows.qualityRow(settings)
+        val q = SettingsRows.qualityRow(settings, labels)
         row(getString(R.string.set_quality), q.value, q.enabled) {
+            if (!q.enabled) {
+                Toast.makeText(this, R.string.quality_auto_toast, Toast.LENGTH_LONG).show()
+                return@row
+            }
             val all = StreamQuality.values()
             settings.quality = all[(all.indexOf(settings.quality) + 1) % all.size]
             build()
@@ -159,7 +172,7 @@ class SettingsActivity : Activity() {
             setBackgroundResource(R.drawable.focus_row)
             setPadding((24 * dp).toInt(), (10 * dp).toInt(), (24 * dp).toInt(), (10 * dp).toInt())
             minimumHeight = (56 * dp).toInt()
-            setOnClickListener { if (enabled) onClick() }
+            setOnClickListener { onClick() }
             addView(TextView(context).apply {
                 text = label
                 textSize = 22f

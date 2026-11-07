@@ -25,7 +25,13 @@
     <string name="slot_mirroring">Recopie en cours (%1$d×%2$d)</string>
     <string name="slot_saturated">Trop de sources</string>
     <string name="slot_stopped">Arrêtée</string>
-    <string name="slot_line">%1$s — %2$s</string>
+    <string name="source_n">Source %1$d : %2$s</string>
+    <string name="quality_fixed">fixé par le nombre de sources</string>
+    <string name="quality_auto_toast">Avec plusieurs sources, la netteté est réglée automatiquement</string>
+    <string name="quality_hd">Standard (1200p)</string>
+    <string name="quality_qhd">Haute (1600p)</string>
+    <string name="quality_uhd">Maximale (2160p)</string>
+    <string name="instruction_single">Sur le Mac : Centre de contrôle › Recopie de l\'écran › %1$s</string>
     <string name="set_audio">Son</string>
     <string name="set_boot">Démarrage avec la box</string>
     <string name="set_overlay">Afficher par-dessus les autres applis</string>
