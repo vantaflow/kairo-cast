@@ -102,7 +102,7 @@ class SlotControllerTest {
     @Test fun startSetsAdmitBeforeNativeStartAndAdvertises() {
         val c = controller(1, 2)
         assertTrue(c.start())
-        assertEquals(listOf("admit1:true", "start1:Kairo 2:1920x1200:fps30"), host.native.calls)
+        assertEquals(listOf("admit1:true", "start1:Kairo 2:2880x1800:fps30"), host.native.calls)
         assertEquals(listOf("+1:Kairo 2:AABBCCDDEE01@x:7010:link7301"), host.adverts)
         assertEquals(SlotPhase.WAITING, phase(1))
     }

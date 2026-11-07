@@ -28,7 +28,7 @@ class SlotPolicy(
 
     fun announced(): AnnouncedMode = when {
         slotCount <= 1 -> AnnouncedMode(quality.width, quality.height, FPS)
-        slotCount == 2 -> AnnouncedMode(1920, 1200, FPS)
+        slotCount == 2 -> AnnouncedMode(2880, 1800, FPS)
         else -> AnnouncedMode(1280, 800, FPS)
     }
 

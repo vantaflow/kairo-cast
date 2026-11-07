@@ -16,7 +16,7 @@
     <string name="set_display">Affichage (une source seule)</string>
     <string name="set_display_help">Ce réglage ne s\'applique qu\'avec une seule source ; à plusieurs, chaque image est ajustée dans sa tuile.</string>
     <string name="set_count">Nombre de sources</string>
-    <string name="set_count_help">Chaque source apparaît sous son propre nom sur le Mac, l\'iPhone ou le PC. Avec 2 sources : 1200p ; avec 3 ou 4 : 800p.</string>
+    <string name="set_count_help">Chaque source apparaît sous son propre nom sur le Mac, l\'iPhone ou le PC. Avec 2 sources : 1800p ; avec 3 ou 4 : 800p.</string>
     <string name="set_source_n">Nom de la source %1$d</string>
     <string name="set_audio_source">Son des sources</string>
     <string name="audio_follow">Suit la tuile sélectionnée</string>

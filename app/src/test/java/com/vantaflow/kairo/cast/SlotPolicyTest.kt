@@ -12,8 +12,8 @@ class SlotPolicyTest {
     @Test fun announcedPerSlotCount() {
         assertEquals(AnnouncedMode(2560, 1600, 30), policy(1, StreamQuality.QHD).announced())
         assertEquals(AnnouncedMode(1920, 1200, 30), policy(1, StreamQuality.HD).announced())
-        assertEquals(AnnouncedMode(1920, 1200, 30), policy(2, StreamQuality.UHD).announced())
-        assertEquals(AnnouncedMode(1920, 1200, 30), policy(2, StreamQuality.HD).announced())
+        assertEquals(AnnouncedMode(2880, 1800, 30), policy(2, StreamQuality.UHD).announced())
+        assertEquals(AnnouncedMode(2880, 1800, 30), policy(2, StreamQuality.HD).announced())
         assertEquals(AnnouncedMode(1280, 800, 30), policy(4, StreamQuality.QHD).announced())
         assertEquals(AnnouncedMode(1280, 800, 30), policy(3, StreamQuality.QHD).announced())
         assertEquals(AnnouncedMode(3456, 2160, 30), policy(1, StreamQuality.UHD).announced())
@@ -118,6 +118,25 @@ class SlotPolicyTest {
             assertTrue("$m blocs", blocks <= BOX_MAX_BLOCKS)
             assertTrue("$m blocs/s", blocks * 30 <= BOX_MAX_BLOCKS_PER_SECOND)
         }
+    }
+
+    @Test fun macAt2880x1800AndPortraitIphoneAreBothAdmitted() {
+        val p = policy(2)
+        assertEquals(Admission.Accepted, p.admit(0, 2880, 1800))
+        assertEquals(Admission.Accepted, p.admit(1, 554, 1200))
+        assertTrue(p.costOf(2880, 1800) + p.costOf(554, 1200) <= SlotPolicy.DEFAULT_BUDGET)
+    }
+
+    @Test fun twoMacsAt2880x1800SecondIsSaturated() {
+        val p = policy(2)
+        assertEquals(Admission.Accepted, p.admit(0, 2880, 1800))
+        assertEquals(Admission.Saturated, p.admit(1, 2880, 1800))
+        assertTrue(p.isSaturated(1))
+    }
+
+    @Test fun twoSourcesAnnounce2880x1800WithinDecoderBlocks() {
+        val m = policy(2).announced()
+        assertEquals(20_340, ((m.width + 15) / 16) * ((m.height + 15) / 16))
     }
 
     private companion object {
