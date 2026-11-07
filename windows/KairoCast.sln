@@ -11,6 +11,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{3109A9CF
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiscoverCli", "tools\DiscoverCli\DiscoverCli.csproj", "{D2C396C4-C472-41F5-8B14-22090874B199}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KairoCast.Media", "KairoCast.Media\KairoCast.Media.csproj", "{69A39BA7-B922-41FB-B263-CC8F46D3DABE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KairoCast.App", "KairoCast.App\KairoCast.App.csproj", "{286BD755-10E4-4CA2-962E-D894D60FDA2E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -32,6 +36,14 @@ Global
 		{D2C396C4-C472-41F5-8B14-22090874B199}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D2C396C4-C472-41F5-8B14-22090874B199}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D2C396C4-C472-41F5-8B14-22090874B199}.Release|Any CPU.Build.0 = Release|Any CPU
+		{69A39BA7-B922-41FB-B263-CC8F46D3DABE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{69A39BA7-B922-41FB-B263-CC8F46D3DABE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{69A39BA7-B922-41FB-B263-CC8F46D3DABE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{69A39BA7-B922-41FB-B263-CC8F46D3DABE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{286BD755-10E4-4CA2-962E-D894D60FDA2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{286BD755-10E4-4CA2-962E-D894D60FDA2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{286BD755-10E4-4CA2-962E-D894D60FDA2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{286BD755-10E4-4CA2-962E-D894D60FDA2E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{D2C396C4-C472-41F5-8B14-22090874B199} = {3109A9CF-101C-47AA-A083-47555E707197}
