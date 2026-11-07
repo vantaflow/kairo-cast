@@ -161,7 +161,7 @@ static void stop_locked(void)
     pthread_mutex_unlock(&g_conn_lock);
 }
 
-int kairo_server_start(const char *name, const char *device_id, const char *key_file,
+int kairo_server_start(const char *name, const char *device_id, const char *key_file, int width, int height,
                        const kairo_callbacks_t *callbacks)
 {
     char hw_addr[MAX_HWADDR_LEN];
@@ -233,7 +233,12 @@ int kairo_server_start(const char *name, const char *device_id, const char *key_
         goto fail;
     }
 
-    /* affichage annonce au client : defauts d'UxPlay (1920x1080, 60 Hz, 30 fps) */
+    /* affichage annonce au client : taille choisie (nettete), refreshRate/maxFPS = defauts d'UxPlay */
+    if (width > 0 && height > 0) {
+        raop_set_plist(g_raop, "width", width);
+        raop_set_plist(g_raop, "height", height);
+        LOGI("affichage annonce : %dx%d", width, height);
+    }
     /* ports fixes (option -p d'UxPlay) : UDP 7011 6001 6000, TCP 7100 7000 7001 */
     unsigned short tcp[3] = { 7100, KAIRO_AIRPLAY_PORT, 7001 };
     unsigned short udp[3] = { 7011, 6001, 6000 };

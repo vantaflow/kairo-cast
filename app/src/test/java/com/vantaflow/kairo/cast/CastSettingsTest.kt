@@ -22,6 +22,22 @@ class CastSettingsTest {
         assertTrue(Regex("^([0-9a-f]{2}:){5}[0-9a-f]{2}$").matches(s.deviceId))
     }
 
+    @Test fun qualityDefaultsToQhd() {
+        assertEquals(StreamQuality.QHD, CastSettings(MapStore(), Random(1)).quality)
+    }
+
+    @Test fun qualityRoundTrip() {
+        val store = MapStore()
+        CastSettings(store, Random(1)).quality = StreamQuality.UHD
+        assertEquals(StreamQuality.UHD, CastSettings(store, Random(1)).quality)
+    }
+
+    @Test fun unknownQualityFallsBack() {
+        val store = MapStore()
+        store.putString("stream_quality", "WAT")
+        assertEquals(StreamQuality.QHD, CastSettings(store, Random(1)).quality)
+    }
+
     @Test fun deviceIdStable() {
         val store = MapStore()
         val a = CastSettings(store, Random(1)).deviceId

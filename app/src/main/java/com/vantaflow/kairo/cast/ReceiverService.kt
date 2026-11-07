@@ -105,7 +105,8 @@ class ReceiverService : Service() {
         val settings = CastSettings(PrefsStore(this))
         val name = settings.name
         accepting = true
-        val ok = NativeReceiver.start(name, settings.deviceId, File(filesDir, "airplay.key").path, listener)
+        val ok = NativeReceiver.start(name, settings.deviceId, File(filesDir, "airplay.key").path,
+            settings.quality.width, settings.quality.height, listener)
         if (!ok) {
             Log.e(TAG, "démarrage du serveur natif échoué")
             accepting = false

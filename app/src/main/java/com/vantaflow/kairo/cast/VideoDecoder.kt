@@ -177,6 +177,10 @@ class VideoDecoder(private var surface: Surface) {
             }
             sps?.let { format.setByteBuffer("csd-0", startCode(it)) }
             pps?.let { format.setByteBuffer("csd-1", startCode(it)) }
+            try {
+                val supported = c.codecInfo.getCapabilitiesForType(MIME).videoCapabilities?.isSizeSupported(width, height)
+                Log.i(TAG, "taille ${width}x$height acceptée par ${c.name} : $supported")
+            } catch (_: Exception) {}
             c.configure(format, surface, null, 0)
             c.start()
             codec = c

@@ -166,7 +166,8 @@ static void release_listener(JNIEnv *env)
 
 JNIEXPORT jboolean JNICALL
 Java_com_vantaflow_kairo_cast_NativeReceiver_nativeStart(JNIEnv *env, jobject thiz, jstring jname,
-                                                         jstring jdevice, jstring jkey, jobject listener)
+                                                         jstring jdevice, jstring jkey, jint width,
+                                                         jint height, jobject listener)
 {
     (void) thiz;
     jclass cls = (*env)->GetObjectClass(env, listener);
@@ -198,7 +199,7 @@ Java_com_vantaflow_kairo_cast_NativeReceiver_nativeStart(JNIEnv *env, jobject th
     kairo_callbacks_t cb = {
         cb_opened, cb_closed, cb_format, cb_video, cb_audio, cb_volume, cb_reset
     };
-    int rc = (name && device && key) ? kairo_server_start(name, device, key, &cb) : -1;
+    int rc = (name && device && key) ? kairo_server_start(name, device, key, (int) width, (int) height, &cb) : -1;
     if (name) (*env)->ReleaseStringUTFChars(env, jname, name);
     if (device) (*env)->ReleaseStringUTFChars(env, jdevice, device);
     if (key) (*env)->ReleaseStringUTFChars(env, jkey, key);

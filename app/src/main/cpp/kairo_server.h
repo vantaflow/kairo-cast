@@ -19,7 +19,7 @@ typedef struct kairo_callbacks_s {
 } kairo_callbacks_t;
 
 /* 0 si OK, valeur negative sinon. device_id = "aa:bb:cc:dd:ee:ff". */
-int kairo_server_start(const char *name, const char *device_id, const char *key_file,
+int kairo_server_start(const char *name, const char *device_id, const char *key_file, int width, int height,
                        const kairo_callbacks_t *callbacks);
 void kairo_server_stop(void);
 
