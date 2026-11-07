@@ -165,4 +165,39 @@ class TileLayoutTest {
         assertEquals(listOf(0, 1), TileLayout.slotsInOrder(listOf(1, 0, 1)))
         assertEquals(5, TileLayout.nextFocus(listOf(0, 1), 5, 1, 0))
     }
+
+    private fun fill(m: Map<Int, Float>, sw: Int = w, sh: Int = h) =
+        TileLayout.compute(m, sw, sh, null, mode = MosaicMode.FILL_SCREEN)
+
+    @Test fun fillScreenMacAndPortraitIphoneHaveNoBars() {
+        val r = fill(mapOf(0 to r1610, 1 to 554f / 1200f))
+        assertValid(r, w, h)
+        assertEquals(1080, r.getValue(0).height)
+        assertEquals(1080, r.getValue(1).height)
+        assertEquals(498.0, r.getValue(1).width.toDouble(), 2.0)
+        assertEquals(1420.0, r.getValue(0).width.toDouble(), 3.0)
+        // contenu du Mac étiré : 1.6 contre 1420/1080 = 1.31, écart sous 25 %
+        val t = r.getValue(0)
+        assertTrue(Math.abs(r1610 / (t.width.toFloat() / t.height) - 1f) <= 0.25f)
+    }
+
+    @Test fun fillScreenSingleSourceCoversScreen() {
+        val r = fill(mapOf(2 to r169))
+        assertEquals(TileRect(0, 0, w, h), r.getValue(2))
+    }
+
+    @Test fun fillScreenRandomProperty() {
+        val rnd = Random(42)
+        repeat(500) {
+            val n = 2 + rnd.nextInt(3)
+            val m = (0 until n).associateWith { 0.4f + rnd.nextFloat() * 1.8f }
+            val r = fill(m)
+            assertEquals(n, r.size)
+            assertValid(r, w, h)
+            assertEquals(0, r.values.minOf { it.top })
+            assertEquals(h, r.values.maxOf { it.top + it.height })
+            val list = r.values.toList()
+            for (i in list.indices) for (j in i + 1 until list.size) assertFalse(overlap(list[i], list[j]))
+        }
+    }
 }

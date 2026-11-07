@@ -134,7 +134,8 @@ class MirrorActivity : Activity() {
         val single = shown.size == 1
         val z = zoomed
         // Mosaïque normale (sans zoom) : le focus se déplace sur ces positions.
-        rects = TileLayout.compute(shown.associateWith { ratioOf(it) }, w, h, null)
+        val fillScreen = settings.mosaicMode == MosaicMode.FILL_SCREEN
+        rects = TileLayout.compute(shown.associateWith { ratioOf(it) }, w, h, null, mode = settings.mosaicMode)
         z?.let { tiles[it]?.bringToFront() }
         for (s in shown) {
             val tile = tiles[s] ?: continue
@@ -144,7 +145,7 @@ class MirrorActivity : Activity() {
             val r = if (single || s == z) TileRect(0, 0, w, h) else rects[s] ?: continue
             tile.place(r.left, r.top, r.width, r.height)
             // Source seule ou zoomée : réglage de l'utilisateur ; mosaïque : Ajuster dans la tuile.
-            tile.setDisplayMode(if (single || s == z) settings.slotDisplayMode(s) else DisplayMode.FIT)
+            tile.setDisplayMode(if (single || s == z) settings.slotDisplayMode(s) else if (fillScreen) DisplayMode.STRETCH else DisplayMode.FIT)
         }
         refreshDecor()
     }

@@ -20,7 +20,7 @@ object TileLayout {
 
     fun slotsInOrder(active: List<Int>): List<Int> = active.distinct().sorted()
 
-    private class Plan(val rects: Map<Int, TileRect>, val area: Long, val rows: Int)
+    private class Plan(val rects: Map<Int, TileRect>, val area: Long, val rows: Int, val rowRanges: List<IntRange> = emptyList())
 
     fun compute(
         sources: Map<Int, Float>,
@@ -28,6 +28,7 @@ object TileLayout {
         screenH: Int,
         zoomed: Int? = null,
         gap: Int = GAP,
+        mode: MosaicMode = MosaicMode.EXACT_FORMATS,
     ): Map<Int, TileRect> {
         val slots = slotsInOrder(sources.keys.toList())
         if (slots.isEmpty() || screenW <= 0 || screenH <= 0) return emptyMap()
@@ -41,6 +42,8 @@ object TileLayout {
             val plan = plan(shown, ratios, rows, screenW, screenH, gap)
             if (best == null || plan.area > best.area) best = plan
         }
+        // Remplir l'écran : même partition en rangées, mais les rangées couvrent toute la hauteur.
+        if (mode == MosaicMode.FILL_SCREEN) return fillPlan(shown, ratios, best!!.rowRanges, screenW, screenH, gap)
         return best!!.rects
     }
 
@@ -74,7 +77,69 @@ object TileLayout {
             }
             top += rowH[i] + gap
         }
-        return Plan(out, area, rows.size)
+        return Plan(out, area, rows.size, rows)
+    }
+
+    /**
+     * Rangées à hauteur partagée selon leur hauteur naturelle ; dans une rangée, les sources
+     * en portrait (rapport < 1) gardent leur largeur naturelle, les autres se partagent le reste
+     * proportionnellement à leur rapport. Aucune barre en haut ni en bas, aucun trou.
+     */
+    private fun fillPlan(
+        slots: List<Int>,
+        ratios: List<Float>,
+        rows: List<IntRange>,
+        screenW: Int,
+        screenH: Int,
+        gap: Int,
+    ): Map<Int, TileRect> {
+        val nat = rows.map { r -> (screenW - (r.count() - 1) * gap) / r.sumOf { ratios[it].toDouble() } }
+        val vGaps = (rows.size - 1) * gap
+        val avail = (screenH - vGaps).coerceAtLeast(rows.size)
+        val rowH = IntArray(rows.size)
+        var used = 0
+        rows.indices.forEach { i ->
+            rowH[i] = if (i == rows.size - 1) avail - used else maxOf(1, (avail * nat[i] / nat.sum()).toInt())
+            used += rowH[i]
+        }
+        val out = LinkedHashMap<Int, TileRect>()
+        var top = 0
+        rows.forEachIndexed { i, r ->
+            val idx = r.toList()
+            val rowAvail = screenW - (idx.size - 1) * gap
+            val portrait = idx.filter { ratios[it] < 1f }
+            val land = idx.filter { ratios[it] >= 1f }
+            val ws = HashMap<Int, Int>()
+            val portraitW = portrait.sumOf { maxOf(1, (ratios[it] * rowH[i]).toInt()) }
+            if (land.isNotEmpty() && portraitW < rowAvail) {
+                portrait.forEach { ws[it] = maxOf(1, (ratios[it] * rowH[i]).toInt()) }
+                val rest = rowAvail - portraitW
+                val sum = land.sumOf { ratios[it].toDouble() }
+                var left = rest
+                land.forEachIndexed { j, it ->
+                    val w = if (j == land.size - 1) left else maxOf(1, (rest * ratios[it] / sum).toInt())
+                    ws[it] = w; left -= w
+                }
+            } else if (land.isEmpty() && portraitW <= rowAvail) {
+                portrait.forEach { ws[it] = maxOf(1, (ratios[it] * rowH[i]).toInt()) }
+            } else {
+                // Trop large : partage proportionnel au rapport sur toute la largeur.
+                val sum = idx.sumOf { ratios[it].toDouble() }
+                var left = rowAvail
+                idx.forEachIndexed { j, it ->
+                    val w = if (j == idx.size - 1) left else maxOf(1, (rowAvail * ratios[it] / sum).toInt())
+                    ws[it] = w; left -= w
+                }
+            }
+            val rowW = idx.sumOf { ws.getValue(it) } + (idx.size - 1) * gap
+            var left = (screenW - rowW) / 2
+            idx.forEach {
+                out[slots[it]] = TileRect(left, top, ws.getValue(it), rowH[i])
+                left += ws.getValue(it) + gap
+            }
+            top += rowH[i] + gap
+        }
+        return out
     }
 
     /** Voisin le plus proche dans la direction demandée, d'après la géométrie calculée. */

@@ -93,7 +93,7 @@ class CastSettingsSlotsTest {
 
     @Test fun invalidSlotCountFallsBack() {
         val store = FakeStore()
-        store.map["slot_count"] = "3"
+        store.map["slot_count"] = "5"
         assertEquals(1, settings(store).slotCount)
         store.map["slot_count"] = "7"
         assertEquals(1, settings(store).slotCount)

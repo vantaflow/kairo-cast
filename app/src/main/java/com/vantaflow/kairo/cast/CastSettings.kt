@@ -20,6 +20,9 @@ class PrefsStore(ctx: Context) : KeyValueStore {
 /** Résolution annoncée au Mac (plus haute = image plus nette). */
 enum class StreamQuality(val width: Int, val height: Int) { HD(1920, 1200), QHD(2560, 1600), UHD(3456, 2160) }
 
+/** Mosaïque : tuiles qui remplissent l'écran, ou formats exacts des sources (barres possibles). */
+enum class MosaicMode { FILL_SCREEN, EXACT_FORMATS }
+
 sealed interface NameResult {
     object Ok : NameResult
     object Duplicate : NameResult
@@ -40,6 +43,10 @@ class CastSettings(
     var slotCount: Int
         get() = store.getString(KEY_SLOT_COUNT)?.toIntOrNull()?.takeIf { it in ALLOWED_SLOT_COUNTS } ?: 1
         set(value) = store.putString(KEY_SLOT_COUNT, (if (value in ALLOWED_SLOT_COUNTS) value else 1).toString())
+
+    var mosaicMode: MosaicMode
+        get() = MosaicMode.values().firstOrNull { it.name == store.getString(KEY_MOSAIC) } ?: MosaicMode.FILL_SCREEN
+        set(value) = store.putString(KEY_MOSAIC, value.name)
 
     /** Source audio épinglée (null = le son suit la tuile sélectionnée). */
     var audioPin: Int?
@@ -104,6 +111,7 @@ class CastSettings(
         const val KEY_QUALITY = "stream_quality"
         const val KEY_AUDIO = "audio_enabled"
         const val KEY_BOOT = "start_on_boot"
+        const val KEY_MOSAIC = "mosaic_mode"
         const val KEY_AUDIO_PIN = "audio_pin"
         const val KEY_SLOT_COUNT = "slot_count"
         val ALLOWED_SLOT_COUNTS = listOf(1, 2, 3, 4)

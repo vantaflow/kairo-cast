@@ -88,6 +88,12 @@ class SettingsActivity : Activity() {
                 build()
             }
         }
+        if (settings.slotCount >= 2) {
+            row(getString(R.string.set_mosaic), getString(if (settings.mosaicMode == MosaicMode.FILL_SCREEN) R.string.mosaic_fill else R.string.mosaic_exact)) {
+                settings.mosaicMode = if (settings.mosaicMode == MosaicMode.FILL_SCREEN) MosaicMode.EXACT_FORMATS else MosaicMode.FILL_SCREEN
+                build()
+            }
+        }
         row(getString(R.string.set_display), when (settings.displayMode) {
             DisplayMode.STRETCH -> getString(R.string.mode_stretch)
             DisplayMode.FILL -> getString(R.string.mode_fill)

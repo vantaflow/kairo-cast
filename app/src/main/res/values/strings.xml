@@ -22,6 +22,9 @@
     <string name="audio_follow">Suit la tuile sélectionnée</string>
     <string name="audio_toast">Son : %1$s</string>
     <string name="audio_toast_follow">Son : suit la sélection</string>
+    <string name="set_mosaic">Mosaïque</string>
+    <string name="mosaic_fill">Remplir l\'écran</string>
+    <string name="mosaic_exact">Formats exacts</string>
     <string name="modify">Modifier</string>
     <string name="name_duplicate">Ce nom est déjà utilisé</string>
     <string name="slot_waiting">En attente</string>
