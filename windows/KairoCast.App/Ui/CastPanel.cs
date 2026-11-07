@@ -117,8 +117,8 @@ public sealed class CastPanel : Form
             var fgThread = fg == 0 ? 0 : GetWindowThreadProcessId(fg, out _);
             var me = GetCurrentThreadId();
             var attached = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
-            SetForegroundWindow(Handle);
-            if (attached) AttachThreadInput(me, fgThread, false);
+            try { SetForegroundWindow(Handle); }
+            finally { if (attached) AttachThreadInput(me, fgThread, false); }
         }
         catch { }
     }

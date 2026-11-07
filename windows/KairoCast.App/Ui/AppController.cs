@@ -19,8 +19,7 @@ public sealed class AppController : IDisposable
     private CancellationTokenSource? _startCts;
     private string _discoveryState = "Recherche des box…";
     private string? _sessionState;
-    private bool _endedEarly;
-    private Exception? _earlyEnd;
+    private readonly EarlyEndGate<StreamSession> _gate = new();
 
     public AppSettings Settings { get; }
     public IReadOnlyList<BoxInfo> Boxes => _boxes;
@@ -117,18 +116,17 @@ public sealed class AppController : IDisposable
         EncoderText = "";
         Changed?.Invoke();
         var cts = _startCts = new CancellationTokenSource();
+        _gate.Reset();
         try
         {
-            StreamSession? self = null;
             var s = await StreamSession.StartAsync(box, Settings.ToStreamOptions(), cts.Token,
-                onEnded: e => _ui.Post(_ => { if (self != null) OnEnded(self, e); else _earlyEnd = e; _endedEarly = true; }, null),
+                onEnded: e => _ui.Post(_ => _gate.Ended(e, OnEnded), null),
                 onStatus: st => _ui.Post(_ =>
                 {
-                    if (self != null && _session == self) { _sessionState = st; Changed?.Invoke(); }
+                    if (_gate.Session != null && _session == _gate.Session) { _sessionState = st; Changed?.Invoke(); }
                 }, null));
-            self = s;
             _session = s;
-            if (_endedEarly) { _endedEarly = false; var e = _earlyEnd; _earlyEnd = null; OnEnded(s, e); return; }
+            if (_gate.Started(s, out var early)) { OnEnded(s, early); return; }
             EncoderText = $"Encodeur : {(s.UsingHardwareEncoder ? "matériel" : "logiciel")} ({s.EncoderName})" + (s.AudioActive ? "" : ", sans son");
             _sessionState = s.Status;
         }
