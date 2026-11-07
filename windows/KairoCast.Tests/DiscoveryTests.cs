@@ -151,4 +151,63 @@ public class DiscoveryTests
         var bad = FullAnswer(); 
         Assert.NotNull(DnsMessage.ParseRecords(bad.AsSpan(0, 40)));
     }
+
+    [Fact]
+    public void Txt_before_srv_still_gives_name()
+    {
+        var (t, found, _) = Make();
+        t.Feed(DnsMessage.ParseRecords(new Msg().Txt(Inst, "name=Chambre").Build()), T0);
+        t.Feed(DnsMessage.ParseRecords(new Msg().Ptr(Svc, Inst).Srv(Inst, Host, 7300).A(Host, "192.168.0.62").Build()), T0);
+        Assert.Equal("Chambre", Assert.Single(found).Name);
+    }
+
+    [Fact]
+    public void Srv_refresh_prevents_flapping()
+    {
+        var (t, found, lost) = Make();
+        t.Feed(DnsMessage.ParseRecords(FullAnswer()), T0);
+        Assert.Empty(t.NeedsRefresh(T0.AddSeconds(90)));
+        Assert.Single(t.NeedsRefresh(T0.AddSeconds(97)));
+        t.Sweep(T0.AddSeconds(119));
+        Assert.Empty(lost);
+        // La box répond à la relance : SRV renouvelé.
+        t.Feed(DnsMessage.ParseRecords(new Msg().Srv(Inst, Host, 7300).A(Host, "192.168.0.62").Build()), T0.AddSeconds(100));
+        t.Sweep(T0.AddSeconds(130));
+        Assert.Empty(lost);
+        Assert.Single(found);
+        Assert.Empty(t.NeedsRefresh(T0.AddSeconds(150)));
+        Assert.Single(t.NeedsRefresh(T0.AddSeconds(197)));
+    }
+
+    [Fact]
+    public void Srv_without_refresh_is_lost_after_ttl()
+    {
+        var (t, _, lost) = Make();
+        t.Feed(DnsMessage.ParseRecords(FullAnswer()), T0);
+        t.Sweep(T0.AddSeconds(121));
+        Assert.Single(lost);
+    }
+
+    [Fact]
+    public void Pointer_loop_does_not_hang_or_throw()
+    {
+        var m = new byte[] { 0, 0, 0x84, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0xC0, 0x0C, 0, 12, 0, 1 };
+        Assert.Empty(DnsMessage.ParseRecords(m));
+    }
+
+    [Fact]
+    public void Every_truncation_is_safe()
+    {
+        var full = FullAnswer();
+        for (int n = 0; n <= full.Length; n++)
+            Assert.NotNull(DnsMessage.ParseRecords(full.AsSpan(0, n)));
+    }
+
+    [Fact]
+    public void Start_after_dispose_is_rejected()
+    {
+        var d = new Discovery();
+        d.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => d.Start());
+    }
 }
