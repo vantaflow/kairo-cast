@@ -19,6 +19,8 @@ public sealed class AppController : IDisposable
     private CancellationTokenSource? _startCts;
     private string _discoveryState = "Recherche des box…";
     private string? _sessionState;
+    private bool _endedEarly;
+    private Exception? _earlyEnd;
 
     public AppSettings Settings { get; }
     public IReadOnlyList<BoxInfo> Boxes => _boxes;
@@ -98,7 +100,7 @@ public sealed class AppController : IDisposable
             return "Adresse invalide : saisissez par exemple 192.168.1.20 ou 192.168.1.20:7300.";
         AddBox(new BoxInfo(ip.ToString(), ip, port), manual: true);
         var entry = port == ManualAddress.DefaultPort ? ip.ToString() : $"{ip}:{port}";
-        if (!Settings.ManualBoxes.Contains(entry)) { Settings.ManualBoxes.Add(entry); Settings.Save(); }
+        if (Settings.AddManualBox(entry)) Settings.Save();
         Changed?.Invoke();
         return null;
     }
@@ -117,13 +119,16 @@ public sealed class AppController : IDisposable
         var cts = _startCts = new CancellationTokenSource();
         try
         {
-            var s = await StreamSession.StartAsync(box, Settings.ToStreamOptions(), cts.Token);
+            StreamSession? self = null;
+            var s = await StreamSession.StartAsync(box, Settings.ToStreamOptions(), cts.Token,
+                onEnded: e => _ui.Post(_ => { if (self != null) OnEnded(self, e); else _earlyEnd = e; _endedEarly = true; }, null),
+                onStatus: st => _ui.Post(_ =>
+                {
+                    if (self != null && _session == self) { _sessionState = st; Changed?.Invoke(); }
+                }, null));
+            self = s;
             _session = s;
-            s.StatusChanged += st => _ui.Post(_ =>
-            {
-                if (_session == s) { _sessionState = st; Changed?.Invoke(); }
-            }, null);
-            s.Ended += e => _ui.Post(_ => OnEnded(s, e), null);
+            if (_endedEarly) { _endedEarly = false; var e = _earlyEnd; _earlyEnd = null; OnEnded(s, e); return; }
             EncoderText = $"Encodeur : {(s.UsingHardwareEncoder ? "matériel" : "logiciel")} ({s.EncoderName})" + (s.AudioActive ? "" : ", sans son");
             _sessionState = s.Status;
         }

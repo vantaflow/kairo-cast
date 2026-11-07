@@ -16,6 +16,8 @@ public sealed class AppSettings
     /// <summary>Adresses ajoutées à la main, « ip:port ».</summary>
     public List<string> ManualBoxes { get; set; } = new();
 
+    private static readonly object SaveLock = new();
+
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,
@@ -45,17 +47,37 @@ public sealed class AppSettings
         }
     }
 
+    /// <summary>Modifie la liste des adresses manuelles sous verrou (appelable depuis n'importe quel fil).</summary>
+    public bool AddManualBox(string entry)
+    {
+        lock (SaveLock)
+        {
+            if (ManualBoxes.Contains(entry)) return false;
+            ManualBoxes.Add(entry);
+            return true;
+        }
+    }
+
     public bool Save(string? path = null)
     {
         try
         {
             path ??= DefaultPath;
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            string json;
-            lock (this) json = JsonSerializer.Serialize(this, Json);
-            var tmp = path + ".tmp";
-            File.WriteAllText(tmp, json);
-            File.Move(tmp, path, overwrite: true);
+            lock (SaveLock)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                var json = JsonSerializer.Serialize(this, Json);
+                var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    File.WriteAllText(tmp, json);
+                    File.Move(tmp, path, overwrite: true);
+                }
+                finally
+                {
+                    try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+                }
+            }
             return true;
         }
         catch

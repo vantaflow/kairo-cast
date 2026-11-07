@@ -62,17 +62,22 @@ public sealed class StreamSession : IAsyncDisposable
         _pacer = new FramePacer(opt.Fps);
     }
 
-    public static Task<StreamSession> StartAsync(BoxInfo box, StreamOptions opt, CancellationToken ct)
+    public static Task<StreamSession> StartAsync(BoxInfo box, StreamOptions opt, CancellationToken ct,
+        Action<Exception?>? onEnded = null, Action<string>? onStatus = null)
     {
         ArgumentNullException.ThrowIfNull(box);
         ArgumentNullException.ThrowIfNull(opt);
         // Initialisation COM/Media Foundation sur un fil MTA du pool, jamais sur le fil de l'interface.
-        return Task.Run(() => StartCoreAsync(box, opt.Validated(), ct), ct);
+        return Task.Run(() => StartCoreAsync(box, opt.Validated(), ct, onEnded, onStatus), ct);
     }
 
-    private static async Task<StreamSession> StartCoreAsync(BoxInfo box, StreamOptions opt, CancellationToken ct)
+    private static async Task<StreamSession> StartCoreAsync(BoxInfo box, StreamOptions opt, CancellationToken ct,
+        Action<Exception?>? onEnded, Action<string>? onStatus)
     {
         var s = new StreamSession(box, opt);
+        // Abonnement avant l'initialisation : aucun événement ne peut être manqué.
+        if (onEnded != null) s.Ended += onEnded;
+        if (onStatus != null) s.StatusChanged += onStatus;
         Log.Info($"=== Session vers « {box.Name} » {box.Address}:{box.Port} : {opt.Width}x{opt.Height}@{opt.Fps}, {opt.BitrateKbps} kb/s, son={opt.Audio} ; " +
                  $"Windows {Environment.OSVersion.Version}, {Environment.ProcessorCount} cœurs, .NET {Environment.Version}, PC « {Environment.MachineName} »");
         try

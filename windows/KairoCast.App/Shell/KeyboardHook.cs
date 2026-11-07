@@ -95,8 +95,9 @@ public sealed class KeyboardHook : IDisposable
                         return 1;
                     case HotkeyDecision.ReplayWinUp:
                         // Touche factice entre l'appui et le relâchement de Win : le menu Démarrer ne s'ouvre pas.
-                        Send(Key(HotkeyFilter.VkDummy, false), Key(HotkeyFilter.VkDummy, true), Key(vk, true));
-                        return 1;
+                        // Si l'envoi échoue (UIPI…), on laisse passer le vrai relâchement : Win ne doit jamais rester bloquée.
+                        if (Send(Key(HotkeyFilter.VkDummy, false), Key(HotkeyFilter.VkDummy, true), Key(vk, true))) return 1;
+                        break;
                 }
             }
         }

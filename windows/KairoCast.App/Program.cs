@@ -26,7 +26,11 @@ internal static class Program
     {
         var console = AttachConsole(-1);
         Log.ToConsole = console;
-        AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error("Exception non gérée", e.ExceptionObject as Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            Log.Error("Exception non gérée", e.ExceptionObject as Exception);
+            try { MessageBox.Show($"Kairo Cast doit s'arrêter : {(e.ExceptionObject as Exception)?.Message}\n\nDétails : {Log.FilePath}", "Kairo Cast", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+        };
         TaskScheduler.UnobservedTaskException += (_, e) => { Log.Warn($"Tâche non observée : {Log.Describe(e.Exception)}"); e.SetObserved(); };
         Log.Info($"Kairo Cast {typeof(Program).Assembly.GetName().Version} démarré : {Environment.ProcessPath} {string.Join(' ', args)}");
 
@@ -69,7 +73,15 @@ internal static class Program
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Ui.TrayApp(showWindow, signal));
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (_, e) =>
+            {
+                Log.Error("Exception d'interface", e.Exception);
+                MessageBox.Show($"Une erreur est survenue : {e.Exception.Message}\n\nDétails : {Log.FilePath}", "Kairo Cast", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            };
+            var app = new Ui.TrayApp(showWindow, signal);
+            app.InstallHook(); // en dernier : un crochet installé trop tôt ralentirait le clavier pendant le démarrage
+            Application.Run(app);
             return 0;
         }
         catch (Exception e)

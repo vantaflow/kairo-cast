@@ -14,8 +14,8 @@ public sealed class MainForm : Form
     };
 
     private readonly AppController _c;
-    private readonly Label _status = new() { AutoSize = false, Width = 400, Height = 40 };
-    private readonly Label _encoder = new() { AutoSize = false, Width = 400, Height = 20, ForeColor = SystemColors.GrayText };
+    private readonly Label _status = new() { AutoSize = false };
+    private readonly Label _encoder = new() { AutoSize = false, ForeColor = SystemColors.GrayText };
     private bool _loading;
 
     /// <summary>Faux tant que l'utilisateur ferme la fenêtre (elle se réduit alors dans la zone de notification).</summary>
@@ -24,6 +24,10 @@ public sealed class MainForm : Form
     public MainForm(AppController controller, Icon? icon)
     {
         _c = controller;
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        _status.Size = new Size(LogicalToDeviceUnits(400), LogicalToDeviceUnits(40));
+        _encoder.Size = new Size(LogicalToDeviceUnits(400), LogicalToDeviceUnits(20));
         Text = "Kairo Cast";
         Icon = icon;
         StartPosition = FormStartPosition.CenterScreen;
@@ -39,9 +43,9 @@ public sealed class MainForm : Form
         flow.Controls.Add(Heading("Box Kairo"));
         flow.Controls.Add(new BoxListControl(_c, 400, ForeColor));
 
-        var ip = new TextBox { Width = 250, PlaceholderText = "192.168.1.20" };
+        var ip = new TextBox { Width = LogicalToDeviceUnits(250), PlaceholderText = "192.168.1.20" };
         var add = new Button { Text = "Ajouter par adresse IP", AutoSize = true };
-        var addError = new Label { AutoSize = false, Width = 400, Height = 20, ForeColor = Color.Firebrick };
+        var addError = new Label { AutoSize = false, Width = LogicalToDeviceUnits(400), Height = LogicalToDeviceUnits(20), ForeColor = Color.Firebrick };
         void DoAdd()
         {
             var err = _c.AddManual(ip.Text);
@@ -56,7 +60,7 @@ public sealed class MainForm : Form
         flow.Controls.Add(addError);
 
         flow.Controls.Add(Heading("Qualité"));
-        var quality = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250 };
+        var quality = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = LogicalToDeviceUnits(250) };
         foreach (var q in Qualities) quality.Items.Add(q.Label);
         flow.Controls.Add(quality);
 

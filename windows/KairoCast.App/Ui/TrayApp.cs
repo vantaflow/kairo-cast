@@ -36,7 +36,6 @@ public sealed class TrayApp : ApplicationContext
         _hook.PanelRequested += () => _panel.Toggle();
         _panel.OthersRequested += OpenNativePanel;
         _main.ReplaceWinKChanged += v => _hook.ReplaceWinK = v;
-        _hook.Install();
 
         _tray = new NotifyIcon { Icon = _icon ?? SystemIcons.Application, Text = "Kairo Cast", Visible = true, ContextMenuStrip = new ContextMenuStrip() };
         _tray.ContextMenuStrip.Opening += (_, _) => BuildMenu();
@@ -48,6 +47,9 @@ public sealed class TrayApp : ApplicationContext
         _wait = ThreadPool.RegisterWaitForSingleObject(_showSignal, (_, _) => ui.Post(_ => _main.ShowAndFront(), null), null, Timeout.Infinite, false);
         if (showWindow) _main.ShowAndFront();
     }
+
+    /// <summary>À appeler en dernier, juste avant Application.Run.</summary>
+    public void InstallHook() => _hook.Install();
 
     private static Icon? LoadIcon()
     {

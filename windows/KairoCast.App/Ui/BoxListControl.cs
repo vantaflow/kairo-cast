@@ -11,7 +11,7 @@ public sealed class BoxListControl : FlowLayoutPanel
     public BoxListControl(AppController controller, int rowWidth, Color foreColor)
     {
         _c = controller;
-        _rowWidth = rowWidth;
+        _rowWidth = LogicalToDeviceUnits(rowWidth);
         _fore = foreColor;
         FlowDirection = FlowDirection.TopDown;
         WrapContents = false;
@@ -46,15 +46,15 @@ public sealed class BoxListControl : FlowLayoutPanel
             Controls.Add(new Label
             {
                 Text = "Aucune box Kairo trouvée. Vérifiez que Kairo Cast est ouvert sur la box et que le PC est sur le même réseau.",
-                ForeColor = _fore, AutoSize = false, Width = _rowWidth, Height = 52, Margin = new Padding(0, 4, 0, 4),
+                ForeColor = _fore, AutoSize = false, Width = _rowWidth, Height = LogicalToDeviceUnits(52), Margin = new Padding(0, 4, 0, 4),
             });
         }
         foreach (var box in _c.Boxes.ToList())
         {
             var active = _c.IsActive(box);
-            var row = new TableLayoutPanel { Width = _rowWidth, Height = 36, ColumnCount = 2, Margin = new Padding(0, 2, 0, 2) };
+            var row = new TableLayoutPanel { Width = _rowWidth, Height = LogicalToDeviceUnits(36), ColumnCount = 2, Margin = new Padding(0, 2, 0, 2) };
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, LogicalToDeviceUnits(104)));
             row.Controls.Add(new Label
             {
                 Text = box.Name, ForeColor = _fore, AutoEllipsis = true, Dock = DockStyle.Fill,
