@@ -49,6 +49,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Même clé que la release quand elle existe : la version debug s'installe par-dessus sans perdre l'appairage.
+            if (rootProject.file("keystore.properties").exists()) signingConfig = signingConfigs.getByName("release")
+        }
         release {
             // R8 désactivé : le code appelé depuis JNI (NativeReceiver, ReceiverListener) est
             // référencé par nom depuis le C, et la taille de l'APK n'est pas critique.
