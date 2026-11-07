@@ -20,17 +20,65 @@ class PrefsStore(ctx: Context) : KeyValueStore {
 /** Résolution annoncée au Mac (plus haute = image plus nette). */
 enum class StreamQuality(val width: Int, val height: Int) { HD(1920, 1080), QHD(2560, 1440), UHD(3840, 2160) }
 
+sealed interface NameResult {
+    object Ok : NameResult
+    object Duplicate : NameResult
+}
+
 class CastSettings(
     private val store: KeyValueStore,
     private val random: Random = SecureRandom(),
 ) {
     var name: String
-        get() = ReceiverName.normalize(store.getString(KEY_NAME))
-        set(value) = store.putString(KEY_NAME, ReceiverName.normalize(value))
+        get() = slotName(0)
+        set(value) = store.putString(SlotIdentity.nameKey(0), ReceiverName.normalize(value))
 
     var displayMode: DisplayMode
-        get() = DisplayMode.values().firstOrNull { it.name == store.getString(KEY_MODE) } ?: DisplayMode.STRETCH
-        set(value) = store.putString(KEY_MODE, value.name)
+        get() = slotDisplayMode(0)
+        set(value) = setSlotDisplayMode(0, value)
+
+    var slotCount: Int
+        get() = store.getString(KEY_SLOT_COUNT)?.toIntOrNull()?.takeIf { it in ALLOWED_SLOT_COUNTS } ?: 1
+        set(value) = store.putString(KEY_SLOT_COUNT, (if (value in ALLOWED_SLOT_COUNTS) value else 1).toString())
+
+    fun slotName(slot: Int): String {
+        checkSlot(slot)
+        val raw = store.getString(SlotIdentity.nameKey(slot)) ?: return SlotIdentity.defaultName(slot)
+        return ReceiverName.normalize(raw)
+    }
+
+    fun setSlotName(slot: Int, raw: String): NameResult = synchronized(this) {
+        checkSlot(slot)
+        val blank = raw.filter { it != '@' && !Character.isISOControl(it) }.isBlank()
+        val name = if (blank) SlotIdentity.defaultName(slot) else ReceiverName.normalize(raw)
+        val taken = (0 until MAX_SLOTS).any { it != slot && slotName(it).equals(name, ignoreCase = true) }
+        if (taken) return NameResult.Duplicate
+        store.putString(SlotIdentity.nameKey(slot), name)
+        NameResult.Ok
+    }
+
+    fun slotDeviceId(slot: Int): String = synchronized(this) {
+        checkSlot(slot)
+        val key = SlotIdentity.deviceIdKey(slot)
+        store.getString(key) ?: DeviceIdentity.generate(random).also { store.putString(key, it) }
+    }
+
+    fun slotDisplayMode(slot: Int): DisplayMode {
+        checkSlot(slot)
+        val stored = store.getString(SlotIdentity.modeKey(slot))
+        return DisplayMode.values().firstOrNull { it.name == stored }
+            ?: if (slotCount >= 2) DisplayMode.FIT else DisplayMode.STRETCH
+    }
+
+    fun setSlotDisplayMode(slot: Int, m: DisplayMode) {
+        checkSlot(slot)
+        store.putString(SlotIdentity.modeKey(slot), m.name)
+    }
+
+    val slotNames: List<String>
+        get() = (0 until slotCount).map { slotName(it) }
+
+    private fun checkSlot(slot: Int) = require(slot in 0 until MAX_SLOTS) { "emplacement hors limites : $slot" }
 
     var quality: StreamQuality
         get() = StreamQuality.values().firstOrNull { it.name == store.getString(KEY_QUALITY) } ?: StreamQuality.QHD
@@ -45,18 +93,13 @@ class CastSettings(
         set(value) = store.putString(KEY_BOOT, value.toString())
 
     val deviceId: String
-        get() = synchronized(this) {
-            store.getString(KEY_DEVICE_ID) ?: DeviceIdentity.generate(random).also {
-                store.putString(KEY_DEVICE_ID, it)
-            }
-        }
+        get() = slotDeviceId(0)
 
     private companion object {
-        const val KEY_NAME = "name"
-        const val KEY_MODE = "display_mode"
         const val KEY_QUALITY = "stream_quality"
         const val KEY_AUDIO = "audio_enabled"
         const val KEY_BOOT = "start_on_boot"
-        const val KEY_DEVICE_ID = "device_id"
+        const val KEY_SLOT_COUNT = "slot_count"
+        val ALLOWED_SLOT_COUNTS = listOf(1, 2, 4)
     }
 }
