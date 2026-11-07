@@ -13,9 +13,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
-      - name: Installer le NDK et CMake
-        run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Installer le NDK et CMake (SDK déjà présent sur le runner)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Créer le keystore de debug
         run: |
           mkdir -p ~/.android
