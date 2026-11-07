@@ -12,3 +12,5 @@ local.properties
 keystore.properties
 *.jks
 *.keystore
+windows/**/bin/
+windows/**/obj/
