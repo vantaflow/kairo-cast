@@ -6,6 +6,7 @@ plugins {
 }
 
 android {
+    testOptions { unitTests.isReturnDefaultValues = true }
     namespace = "com.vantaflow.kairo.cast"
     compileSdk = 34
     ndkVersion = "27.2.12479018"

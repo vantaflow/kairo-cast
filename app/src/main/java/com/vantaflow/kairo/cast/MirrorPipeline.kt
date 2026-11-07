@@ -3,6 +3,13 @@ package com.vantaflow.kairo.cast
 import android.util.Log
 import android.view.Surface
 
+/** Ce que [SlotController] pilote : le pipeline d'un emplacement (fabriquable en test). */
+interface PipelineFeed : ReceiverListener {
+    fun onPcmAudio(data: ByteArray, size: Int, ptsUs: Long)
+    fun onSourceChanged()
+    fun setAudioMuted(muted: Boolean)
+}
+
 /**
  * Pipeline vidéo de la session de recopie : possède le décodeur, qui continue de tourner même
  * sans activité (sortie sur une surface de remplacement). Créé à l'ouverture de la connexion,
@@ -12,7 +19,14 @@ class MirrorPipeline(
     private val audioEnabled: Boolean = true,
     /** Appelé quand une image clé serait utile (décodeur reconfiguré sans IDR, activité rattachée). */
     private val onKeyFrameNeeded: () -> Unit = {},
-) : ReceiverListener {
+) : PipelineFeed {
+    @Volatile private var audioMuted = false
+
+    /** Coupe le son de ce flux sans toucher au décodeur (un seul emplacement audible à la fois). */
+    override fun setAudioMuted(muted: Boolean) {
+        audioMuted = muted
+    }
+
     private val lock = Any()
     private val placeholder = PlaceholderSurface()
     private var released = false
@@ -115,7 +129,7 @@ class MirrorPipeline(
     }
 
     override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long, codecType: Int) {
-        if (!audioEnabled || size <= 0) return
+        if (!audioEnabled || audioMuted || size <= 0) return
         val a: AudioPlayer
         synchronized(lock) {
             if (released) return
@@ -140,8 +154,8 @@ class MirrorPipeline(
     }
 
     /** PCM s16le 48 kHz stéréo (Kairo Link). */
-    fun onPcmAudio(data: ByteArray, size: Int, ptsUs: Long) {
-        if (!audioEnabled || size <= 0) return
+    override fun onPcmAudio(data: ByteArray, size: Int, ptsUs: Long) {
+        if (!audioEnabled || audioMuted || size <= 0) return
         val a: AudioPlayer
         synchronized(lock) {
             if (released) return
@@ -160,7 +174,7 @@ class MirrorPipeline(
     }
 
     /** La source (AirPlay <-> Link) change : décodeur et audio repartent à neuf, la surface reste. */
-    fun onSourceChanged() {
+    override fun onSourceChanged() {
         val a: AudioPlayer?
         synchronized(lock) {
             a = audio

@@ -3,15 +3,14 @@ package com.vantaflow.kairo.cast
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import android.net.wifi.WifiManager
 import android.util.Log
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-class MdnsAdvertiser(ctx: Context) {
+class MdnsAdvertiser(ctx: Context, private val locks: MulticastLockHolder = MulticastLockHolder.of(ctx)) {
     private val app = ctx.applicationContext
     private val nsd = app.getSystemService(Context.NSD_SERVICE) as NsdManager
-    private var lock: WifiManager.MulticastLock? = null
+    private var locked = false
     private val listeners = ArrayList<NsdManager.RegistrationListener>()
     private val pending = ArrayList<CountDownLatch>()
 
@@ -23,17 +22,15 @@ class MdnsAdvertiser(ctx: Context) {
         airplayTxt: Map<String, String>,
         raopTxt: Map<String, String>,
         linkPort: Int = 0,
+        slot: Int = 0,
     ) {
         unregister()
-        val wifi = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        lock = wifi.createMulticastLock("kairocast-mdns").apply {
-            setReferenceCounted(false)
-            acquire()
-        }
+        locks.acquire()
+        locked = true
         add("_airplay._tcp", name, port, airplayTxt)
         add("_raop._tcp", raopName, port, raopTxt)
         // nom d'instance distinct : NsdManager refuse deux services de même nom (conflit)
-        if (linkPort > 0) add("_kairocast._tcp", "$name Link", linkPort, mapOf("name" to name, "v" to "1"))
+        if (linkPort > 0) add("_kairocast._tcp", "$name Link", linkPort, mapOf("name" to name, "v" to "1", "slot" to slot.toString()))
     }
 
     private fun add(type: String, name: String, port: Int, txt: Map<String, String>) {
@@ -83,8 +80,7 @@ class MdnsAdvertiser(ctx: Context) {
         } finally {
             listeners.clear()
             pending.clear()
-            try { lock?.let { if (it.isHeld) it.release() } } catch (e: Exception) { }
-            lock = null
+            if (locked) { locked = false; locks.release() }
         }
     }
 

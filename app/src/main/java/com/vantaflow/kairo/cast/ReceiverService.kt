@@ -10,154 +10,40 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
-import com.vantaflow.kairo.cast.link.Hello
 import com.vantaflow.kairo.cast.link.LinkListener
-import com.vantaflow.kairo.cast.link.LinkServer
 import java.io.File
 import java.util.concurrent.Executors
 
 class ReceiverService : Service() {
     private val main = Handler(Looper.getMainLooper())
-    private var advertiser: MdnsAdvertiser? = null
+    // Tout le cycle de vie (démarrage, arrêt, annonces) passe par ce thread : jamais depuis un rappel natif.
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "kairo-receiver") }
-    @Volatile private var accepting = false
-    private var running = false // worker uniquement
+    private val controllers = HashMap<Int, SlotController>() // worker + lectures sous verrou
+    private var supervisor: SlotSupervisor? = null // worker uniquement
+    private var policy: SlotPolicy? = null
+    private var policyKey: Pair<Int, StreamQuality>? = null
+    private val audio = AudioSelector()
+    private val activeLock = Any()
+    private var lastActive: List<Int> = emptyList()
+    private var destroyed = false
 
-    private val session = ReceiverSession(
-        onStart = {
-            main.post {
-                startActivity(
-                    Intent(this, MirrorActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            }
-        },
-        onStop = {
-            main.post { sendBroadcast(Intent(ACTION_CLOSE_MIRROR).setPackage(packageName)) }
-        },
-    )
-
-    private val arb = Any()
-    @Volatile private var owner = MirrorSource.NONE
-    private var linkServer: LinkServer? = null
-    private var ignoredLogged = false
-    @Volatile private var airplayConnected = false // connexion native AirPlay ouverte (même ignorée)
-
-    /** Image clé demandée par le décodeur ou l'activité : utile seulement pour Link. */
-    private fun keyFrameNeeded() {
-        if (owner == MirrorSource.LINK) linkServer?.requestKeyFrame()
-    }
-
-    /** Prend la main (sous [arb]) ; renvoie la source précédente. */
-    private fun beginSession(src: MirrorSource): MirrorSource {
-        synchronized(arb) {
-            val prev = owner
-            owner = src
-            ignoredLogged = false
-            val p = MirrorBus.pipeline
-            when (SessionArbiter.action(prev, src, p != null)) {
-                PipelineAction.START_FRESH ->
-                    MirrorBus.start(CastSettings(PrefsStore(this)).audioEnabled, ::keyFrameNeeded)
-                PipelineAction.SWITCH_SOURCE -> p?.onSourceChanged()
-            }
-            session.opened()
-            return prev
-        }
-    }
-
-    private fun endSession(src: MirrorSource) {
-        synchronized(arb) {
-            if (owner != src) return
-            owner = MirrorSource.NONE
-            session.closed()
-            MirrorBus.stop()
-            // Le Mac est resté connecté mais AirPlay ne permet pas de redemander une image clé.
-            ReceiverState.set(if (src == MirrorSource.LINK && airplayConnected) Status.MacWaiting else Status.Waiting)
-        }
-    }
-
-    /** Vrai si les données AirPlay doivent être traitées ; sinon (Link actif) elles sont ignorées. */
-    private fun airplayActive(): Boolean {
-        if (!accepting) return false
-        if (owner == MirrorSource.AIRPLAY) return true
-        if (owner == MirrorSource.LINK && !ignoredLogged) {
-            ignoredLogged = true
-            Log.i(TAG, "AirPlay : données ignorées tant que Link est actif")
-        }
-        return false
-    }
-
-    private fun takeOverFromLink() {
-        // Hors de [arb] : closeClient prend le verrou de dispatch du serveur Link.
-        linkServer?.closeClient()
-    }
-
-    private val listener = object : ReceiverListener {
-        override fun onConnectionOpened() {
-            if (!accepting) return
-            airplayConnected = true
-            val prev = beginSession(MirrorSource.AIRPLAY)
-            if (prev == MirrorSource.LINK) {
-                Log.i(TAG, "AirPlay arrive : la session Link est fermée")
-                takeOverFromLink()
-            }
-        }
-        override fun onConnectionClosed() {
-            if (!accepting) return
-            airplayConnected = false
-            endSession(MirrorSource.AIRPLAY)
-            if (ReceiverState.status.value == Status.MacWaiting) ReceiverState.set(Status.Waiting)
-        }
-        override fun onVideoFormat(width: Int, height: Int, contentX: Int, contentY: Int, contentW: Int, contentH: Int) {
-            if (!accepting) return
-            // Un nouveau flux AirPlay est une arrivée, même si une connexion était restée ouverte.
-            if (owner != MirrorSource.AIRPLAY) {
-                val prev = beginSession(MirrorSource.AIRPLAY)
-                if (prev == MirrorSource.LINK) {
-                    Log.i(TAG, "AirPlay arrive : la session Link est fermée")
-                    takeOverFromLink()
-                }
-            }
-            Log.i(TAG, "onVideoFormat flux ${width}x$height contenu x=$contentX y=$contentY ${contentW}x$contentH")
-            ReceiverState.set(Status.Mirroring(width, height))
-            MirrorBus.pipeline?.onVideoFormat(width, height, contentX, contentY, contentW, contentH)
-        }
-        override fun onVideoData(data: ByteArray, size: Int, ptsUs: Long) {
-            if (!airplayActive()) return
-            MirrorBus.pipeline?.onVideoData(data, size, ptsUs)
-        }
-        override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long, codecType: Int) {
-            if (!airplayActive()) return
-            MirrorBus.pipeline?.onAudioData(data, size, ptsUs, codecType)
-        }
-        override fun onAudioVolume(volumeDb: Float) {
-            if (!accepting) return
-            MirrorBus.pipeline?.onAudioVolume(volumeDb)
-        }
-        override fun onVideoReset() {
-            if (!airplayActive()) return
-            MirrorBus.pipeline?.onVideoReset()
-        }
-    }
-
-    private val linkListener = object : LinkListener {
-        override fun onLinkOpened(hello: Hello) {
-            if (!accepting) return
-            beginSession(MirrorSource.LINK)
-            Log.i(TAG, "Link : session ouverte (${hello.name} ${hello.w}x${hello.h})")
-            ReceiverState.set(Status.Mirroring(hello.w, hello.h))
-            MirrorBus.pipeline?.onVideoFormat(hello.w, hello.h, 0, 0, hello.w, hello.h)
-        }
-        override fun onLinkVideo(data: ByteArray, size: Int, ptsUs: Long, key: Boolean) {
-            if (owner != MirrorSource.LINK) return
-            MirrorBus.pipeline?.onVideoData(data, size, ptsUs)
-        }
-        override fun onLinkAudio(pcm: ByteArray, size: Int, ptsUs: Long) {
-            if (owner != MirrorSource.LINK) return
-            MirrorBus.pipeline?.onPcmAudio(pcm, size, ptsUs)
-        }
-        override fun onLinkClosed() {
-            Log.i(TAG, "Link : session fermée")
-            endSession(MirrorSource.LINK)
+    private val host = object : SlotHost {
+        private val advertisers = HashMap<Int, MdnsAdvertiser>()
+        override val native: SlotNative = RealSlotNative
+        override fun keyFile(slot: Int) = File(filesDir, SlotIdentity.keyFileName(slot)).path
+        override fun pipeline(slot: Int): PipelineFeed? = MirrorBus.pipeline(slot)
+        override fun startPipeline(slot: Int, audioEnabled: Boolean, onKeyFrameNeeded: () -> Unit) =
+            MirrorBus.start(slot, audioEnabled, onKeyFrameNeeded)
+        override fun stopPipeline(slot: Int) = MirrorBus.stop(slot)
+        override fun newLink(port: Int, listener: LinkListener): LinkEndpoint = RealLinkEndpoint(port, listener)
+        override fun advertise(
+            slot: Int, name: String, raopName: String, port: Int,
+            airplayTxt: Map<String, String>, raopTxt: Map<String, String>, linkPort: Int,
+        ): () -> Unit {
+            val adv = MdnsAdvertiser(this@ReceiverService)
+            adv.register(name, raopName, port, airplayTxt, raopTxt, linkPort, slot)
+            synchronized(advertisers) { advertisers[slot] = adv }
+            return { synchronized(advertisers) { advertisers.remove(slot) }?.unregister() }
         }
     }
 
@@ -165,12 +51,8 @@ class ReceiverService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         enterForeground()
-        val restart = intent?.action == ACTION_RESTART
         try {
-            worker.execute {
-                if (restart) stopReceiver()
-                if (!running) startReceiver()
-            }
+            worker.execute { reconcile() }
         } catch (e: java.util.concurrent.RejectedExecutionException) {
             Log.w(TAG, "service en arrêt, commande ignorée")
         }
@@ -199,67 +81,100 @@ class ReceiverService : Service() {
         getSystemService(NotificationManager::class.java).notify(NOTIF_ID, notification(text))
     }
 
-    private fun startReceiver() {
-        val settings = CastSettings(PrefsStore(this))
-        val name = settings.name
-        AudioPlayer.logAvailableDecoders()
-        accepting = true
-        val ok = NativeReceiver.start(0, name, settings.deviceId, File(filesDir, "airplay.key").path,
-            settings.quality.width, settings.quality.height, 0, SlotPorts.of(0), listener)
-        if (!ok) {
-            Log.e(TAG, "démarrage du serveur natif échoué")
-            accepting = false
-            setNotificationText("Erreur : récepteur indisponible")
-            ReceiverState.set(Status.Stopped)
-            return
-        }
-        running = true
-        var linkPort = 0
-        try {
-            val ls = LinkServer(LinkServer.DEFAULT_PORT, linkListener)
-            ls.start()
-            linkServer = ls
-            linkPort = LinkServer.DEFAULT_PORT
-        } catch (e: Exception) {
-            Log.e(TAG, "serveur Link indisponible (port ${LinkServer.DEFAULT_PORT}) : $e")
-        }
-        val adv = MdnsAdvertiser(this)
-        adv.register(
-            name,
-            NativeReceiver.raopServiceName(0),
-            SlotPorts.of(0).airplayHttp,
-            TxtRecord.parse(NativeReceiver.airplayTxt(0)),
-            TxtRecord.parse(NativeReceiver.raopTxt(0)),
-            linkPort,
-        )
-        advertiser = adv
-        ReceiverState.set(Status.Waiting)
-        setNotificationText("Prêt à recevoir")
-        Log.i(TAG, "récepteur démarré : $name")
+    /** Ce qui impose le redémarrage d'un emplacement : seule sa clé qui change le redémarre. */
+    private fun keysFor(settings: CastSettings): List<Any> {
+        val n = settings.slotCount
+        return (0 until n).map { listOf(settings.slotName(it), n, if (n == 1) settings.quality else null, settings.audioEnabled) }
     }
 
-    private fun stopReceiver() {
-        if (!running) return
-        accepting = false
-        advertiser?.unregister()
-        advertiser = null
-        linkServer?.stop()
-        linkServer = null
-        NativeReceiver.stop(0)
-        running = false
-        synchronized(arb) {
-            owner = MirrorSource.NONE
-            airplayConnected = false
-            session.closed()
-            MirrorBus.stop()
+    /** Worker : amène les emplacements en marche à l'état voulu par les réglages (démarrage, changement de nom ou de nombre). */
+    private fun reconcile() {
+        if (destroyed) return
+        val settings = CastSettings(PrefsStore(this))
+        val count = settings.slotCount
+        val pk = count to settings.quality
+        if (supervisor == null) AudioPlayer.logAvailableDecoders()
+        val sup = supervisor ?: SlotSupervisor { slot -> controllerFor(slot, settings) }.also { supervisor = it }
+        if (policy == null || (policyKey?.first != count) || (count == 1 && policyKey != pk)) {
+            policy = SlotPolicy(count, settings.quality)
+            policyKey = pk
         }
-        ReceiverState.set(Status.Stopped)
+        val names = settings.slotNames
+        if (sup.slots.isEmpty()) SlotsState.reset(count, names)
+        else for (slot in (0 until count)) if (slot !in sup.slots) SlotsState.update(SlotState(slot, names[slot], SlotPhase.STOPPED))
+        val before = sup.slots
+        sup.apply(keysFor(settings))
+        for (slot in before.filter { it >= count }) SlotsState.remove(slot)
+        refreshUi()
+    }
+
+    private fun controllerFor(slot: Int, settings: CastSettings): SlotRunner {
+        val c = SlotController(slot, host, settings, policy!!, ::onSlotChanged, ::onSlotsFreed)
+        synchronized(controllers) { controllers[slot] = c }
+        return object : SlotRunner {
+            override fun start() = c.start()
+            override fun stop() {
+                c.stop()
+                synchronized(controllers) { if (controllers[slot] === c) controllers.remove(slot) }
+            }
+        }
+    }
+
+    private fun onSlotsFreed(slots: List<Int>) {
+        val cs = synchronized(controllers) { slots.mapNotNull { controllers[it] } }
+        cs.forEach { it.resumeFromSaturation() }
+    }
+
+    /** Rappel des contrôleurs (thread quelconque) : ne fait que lire l'état et poster. */
+    private fun onSlotChanged() {
+        val next = SlotsState.active.value
+        val prev: List<Int>
+        synchronized(activeLock) {
+            prev = lastActive
+            lastActive = next
+        }
+        if (prev.isEmpty() && next.isNotEmpty()) {
+            main.post {
+                startActivity(Intent(this, MirrorActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        } else if (SlotsState.shouldClose(prev, next)) {
+            main.post { sendBroadcast(Intent(ACTION_CLOSE_MIRROR).setPackage(packageName)) }
+        }
+        if (prev != next) audio.onActiveChanged(next)
+        val sel = audio.audioSlot
+        val cs = synchronized(controllers) { controllers.toMap() }
+        cs.forEach { (s, c) -> c.setAudioMuted(s != sel) }
+        refreshUi()
+    }
+
+    private fun refreshUi() {
+        if (destroyed) return
+        val slots = SlotsState.slots.value
+        val sel = audio.audioSlot
+        val mirroring = slots.filter { it.phase == SlotPhase.MIRRORING || it.phase == SlotPhase.SATURATED }
+        val text = when {
+            slots.isNotEmpty() && slots.all { it.phase == SlotPhase.ERROR } -> "Erreur : récepteur indisponible"
+            mirroring.isNotEmpty() ->
+                "Recopie : " + mirroring.joinToString(", ") { if (it.slot == sel) "${it.name} (son)" else it.name }
+            else -> "Prêt : " + slots.filter { it.phase != SlotPhase.ERROR }.joinToString(", ") { it.name }
+        }
+        try { setNotificationText(text) } catch (e: Exception) { Log.w(TAG, "notification : $e") }
+    }
+
+    private fun stopAll() {
+        supervisor?.stopAll()
+        supervisor = null
+        policy = null
+        policyKey = null
+        MirrorBus.stopAll()
+        synchronized(controllers) { controllers.clear() }
+        SlotsState.reset(0, emptyList())
     }
 
     override fun onDestroy() {
-        accepting = false
+        destroyed = true
         main.removeCallbacksAndMessages(null)
-        worker.execute { stopReceiver() }
+        worker.execute { stopAll() }
         worker.shutdown()
         super.onDestroy()
     }

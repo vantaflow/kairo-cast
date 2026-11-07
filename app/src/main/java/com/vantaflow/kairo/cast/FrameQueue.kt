@@ -18,6 +18,7 @@ class FrameQueue(private val capacity: Int, private val offerWaitMs: Long = 50) 
     private val notEmpty = lock.newCondition()
     private val notFull = lock.newCondition()
     private val items = ArrayDeque<Frame>()
+    private var initialDelivered = false // sous [lock] : la première image clé (IDR) est sortie
 
     /** Nombre d'images retirées faute de place (consultable pour les journaux). */
     @Volatile var dropped = 0L
@@ -26,7 +27,18 @@ class FrameQueue(private val capacity: Int, private val offerWaitMs: Long = 50) 
     fun offer(frame: Frame) = lock.withLock {
         var nanos = TimeUnit.MILLISECONDS.toNanos(offerWaitMs)
         while (items.size >= capacity && nanos > 0L) nanos = notFull.awaitNanos(nanos)
-        if (items.size >= capacity) {
+        if (items.size >= capacity && !initialDelivered) {
+            // Avant le premier IDR (codec en configuration, plusieurs flux qui démarrent ensemble) :
+            // on ne jette jamais SPS/PPS/IDR (AirPlay ne les renvoie pas), la file peut dépasser.
+            val it = items.iterator()
+            while (it.hasNext()) {
+                if (!it.next().keyFrame) {
+                    it.remove()
+                    dropped++
+                    break
+                }
+            }
+        } else if (items.size >= capacity) {
             val it = items.iterator()
             var removed = false
             while (it.hasNext()) {
@@ -51,6 +63,7 @@ class FrameQueue(private val capacity: Int, private val offerWaitMs: Long = 50) 
             nanos = notEmpty.awaitNanos(nanos)
         }
         val f = items.pollFirst()
+        if (f.keyFrame && !H264.isConfigOnly(f.data, f.size)) initialDelivered = true
         notFull.signal()
         f
     }

@@ -10,5 +10,6 @@
             android:exported="true"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
         <service android:name=".debug.SpikeS2Service" android:exported="true" />
+        <receiver android:name=".debug.DebugSettingsReceiver" android:exported="true" />
     </application>
 </manifest>

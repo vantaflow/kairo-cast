@@ -20,24 +20,58 @@ object ReceiverState {
     }
 }
 
+/** Une valeur par emplacement ; remplacer ou retirer libère l'ancienne valeur. Testable sans Android. */
+class SlotRegistry<T : Any>(private val release: (T) -> Unit, private val create: (Int) -> T) {
+    private val items = arrayOfNulls<Any>(MAX_SLOTS)
+
+    @Suppress("UNCHECKED_CAST")
+    @Synchronized
+    fun get(slot: Int): T? = items[slot] as T?
+
+    @Suppress("UNCHECKED_CAST")
+    @Synchronized
+    fun start(slot: Int): T {
+        (items[slot] as T?)?.let(release)
+        return create(slot).also { items[slot] = it }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    @Synchronized
+    fun stop(slot: Int) {
+        (items[slot] as T?)?.let(release)
+        items[slot] = null
+    }
+
+    @Synchronized
+    fun stopAll() = (0 until MAX_SLOTS).forEach { stop(it) }
+
+    @Synchronized
+    fun firstSlot(): Int? = (0 until MAX_SLOTS).firstOrNull { items[it] != null }
+}
+
 /**
- * Point d'accès au pipeline vidéo, qui vit aussi longtemps que la session de recopie (et non
- * l'activité). L'activité ne fait que brancher / débrancher sa surface.
+ * Pipelines vidéo, un par emplacement, qui vivent aussi longtemps que la session de recopie de
+ * l'emplacement (et non l'activité). L'activité ne fait que brancher / débrancher sa surface.
  */
 object MirrorBus {
-    @Volatile
-    var pipeline: MirrorPipeline? = null
-        private set
+    private var audioEnabled = true
+    private var onKey: Array<() -> Unit> = Array(MAX_SLOTS) { {} }
+    private val registry = SlotRegistry<MirrorPipeline>({ it.release() }) { MirrorPipeline(audioEnabled, onKey[it]) }
+
+    fun pipeline(slot: Int): MirrorPipeline? = registry.get(slot)
+
+    /** Pipeline du plus petit emplacement ouvert (écran à une seule tuile). */
+    val pipeline: MirrorPipeline?
+        get() = registry.firstSlot()?.let { registry.get(it) }
 
     @Synchronized
-    fun start(audioEnabled: Boolean = true, onKeyFrameNeeded: () -> Unit = {}) {
-        pipeline?.release()
-        pipeline = MirrorPipeline(audioEnabled, onKeyFrameNeeded)
+    fun start(slot: Int, audioEnabled: Boolean = true, onKeyFrameNeeded: () -> Unit = {}) {
+        this.audioEnabled = audioEnabled
+        onKey[slot] = onKeyFrameNeeded
+        registry.start(slot)
     }
 
-    @Synchronized
-    fun stop() {
-        pipeline?.release()
-        pipeline = null
-    }
+    fun stop(slot: Int) = registry.stop(slot)
+
+    fun stopAll() = registry.stopAll()
 }

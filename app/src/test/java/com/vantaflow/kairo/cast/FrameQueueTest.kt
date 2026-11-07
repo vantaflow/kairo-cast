@@ -22,11 +22,13 @@ class FrameQueueTest {
         assertEquals(5L, q.poll(10)?.ptsUs)
     }
 
-    @Test fun overflowAllKeyDropsOldest() {
+    @Test fun overflowAllKeyAfterFirstIdrDropsOldest() {
         val q = FrameQueue(2, 1)
-        q.offer(f(0, true)); q.offer(f(1, true)); q.offer(f(2, true))
-        assertEquals(1L, q.poll(10)?.ptsUs)
+        q.offer(f(0, true))
+        assertEquals(0L, q.poll(10)?.ptsUs) // IDR initial livré
+        q.offer(f(1, true)); q.offer(f(2, true)); q.offer(f(3, true))
         assertEquals(2L, q.poll(10)?.ptsUs)
+        assertEquals(3L, q.poll(10)?.ptsUs)
     }
 
     @Test fun producerWaitsForConsumer() {
@@ -56,5 +58,23 @@ class FrameQueueTest {
         q.offer(f(0, true))
         q.clear()
         assertNull(q.poll(10))
+    }
+
+    @Test fun initialKeyFrameSurvivesOverflowBeforeFirstIdrDelivered() {
+        val q = FrameQueue(2, 1)
+        q.offer(f(0, true))   // SPS/IDR initial
+        q.offer(f(1, false))
+        q.offer(f(2, false))  // pleine : retire une P-frame, jamais l'IDR
+        q.offer(f(3, false))
+        q.offer(f(4, false))
+        assertEquals(0L, q.poll(10)?.ptsUs)
+    }
+
+    @Test fun allKeyBeforeFirstIdrIsNotDropped() {
+        val q = FrameQueue(2, 1)
+        q.offer(f(0, true)); q.offer(f(1, true)); q.offer(f(2, true))
+        assertEquals(0L, q.poll(10)?.ptsUs)
+        assertEquals(1L, q.poll(10)?.ptsUs)
+        assertEquals(2L, q.poll(10)?.ptsUs)
     }
 }
