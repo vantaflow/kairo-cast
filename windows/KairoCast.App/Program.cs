@@ -11,6 +11,7 @@ namespace KairoCast.App;
 internal static class Program
 {
     private const string Usage =
+        "KairoCast.exe            interface (fenêtre et zone de notification) ; --tray : démarrage discret\n" +
         "KairoCast.exe --box <ip>[:port] [--seconds N] [--width W] [--height H] [--fps F] [--kbps K] [--no-audio]\n" +
         "  --box      adresse de la box Kairo (port 7300 par défaut)\n" +
         "  --seconds  durée du partage, 0 = jusqu'à Ctrl+C ou fin de session (défaut 0)\n" +
@@ -29,12 +30,13 @@ internal static class Program
         TaskScheduler.UnobservedTaskException += (_, e) => { Log.Warn($"Tâche non observée : {Log.Describe(e.Exception)}"); e.SetObserved(); };
         Log.Info($"Kairo Cast {typeof(Program).Assembly.GetName().Version} démarré : {Environment.ProcessPath} {string.Join(' ', args)}");
 
-        if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
+        if (args.Contains("--help") || args.Contains("-h"))
         {
-            // L'interface arrive avec la tâche 6 ; pour l'instant, mode ligne de commande seulement.
             Show(console, Usage);
-            return args.Length == 0 ? 2 : 0;
+            return 0;
         }
+        if (args.Length == 0 || args.All(a => a == "--tray"))
+            return RunUi(showWindow: args.Length == 0);
         if (!CliOptions.TryParse(args, out var cli, out var error))
         {
             Log.Error($"Arguments invalides : {error}");
@@ -49,6 +51,31 @@ internal static class Program
         {
             Log.Error("Partage impossible", e);
             Show(console, $"Partage impossible : {e.Message}\n\nDétails : {Log.FilePath}");
+            return 1;
+        }
+    }
+
+    private static int RunUi(bool showWindow)
+    {
+        using var mutex = new Mutex(true, @"Local\KairoCast.SingleInstance", out var first);
+        using var signal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\KairoCast.Show");
+        if (!first)
+        {
+            // Une instance tourne déjà : on la ramène devant.
+            signal.Set();
+            return 0;
+        }
+        try
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new Ui.TrayApp(showWindow, signal));
+            return 0;
+        }
+        catch (Exception e)
+        {
+            Log.Error("Application arrêtée", e);
+            MessageBox.Show($"Kairo Cast s'est arrêté : {e.Message}\n\nDétails : {Log.FilePath}", "Kairo Cast", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
     }

@@ -25,6 +25,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Logique pure de l'application Windows, compilée ici pour être testée sous macOS. -->
+    <Compile Include="..\KairoCast.App\Shell\Settings.cs" Link="AppShell\Settings.cs" />
+    <Compile Include="..\KairoCast.App\Shell\HotkeyFilter.cs" Link="AppShell\HotkeyFilter.cs" />
+    <Compile Include="..\KairoCast.App\Shell\ManualAddress.cs" Link="AppShell\ManualAddress.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\KairoCast.Link\KairoCast.Link.csproj" />
     <ProjectReference Include="..\KairoCast.Media\KairoCast.Media.csproj" />
   </ItemGroup>
