@@ -90,7 +90,7 @@ static void call_void(jmethodID m)
     check_exception(env);
 }
 
-static void call_data(jmethodID m, const unsigned char *data, int size, int64_t pts_us)
+static void call_data(jmethodID m, const unsigned char *data, int size, int64_t pts_us, int extra, int has_extra)
 {
     thread_ctx_t *ctx = NULL;
     JNIEnv *env = get_env(&ctx);
@@ -109,7 +109,8 @@ static void call_data(jmethodID m, const unsigned char *data, int size, int64_t 
         ctx->cap = cap;
     }
     (*env)->SetByteArrayRegion(env, ctx->array, 0, size, (const jbyte *) data);
-    (*env)->CallVoidMethod(env, l, m, ctx->array, (jint) size, (jlong) pts_us);
+    if (has_extra) (*env)->CallVoidMethod(env, l, m, ctx->array, (jint) size, (jlong) pts_us, (jint) extra);
+    else (*env)->CallVoidMethod(env, l, m, ctx->array, (jint) size, (jlong) pts_us);
     check_exception(env);
 }
 
@@ -128,8 +129,8 @@ static void cb_format(int w, int h, int cx, int cy, int cw, int ch)
     check_exception(env);
 }
 
-static void cb_video(const unsigned char *d, int n, int64_t pts) { call_data(m_video, d, n, pts); }
-static void cb_audio(const unsigned char *d, int n, int64_t pts) { call_data(m_audio, d, n, pts); }
+static void cb_video(const unsigned char *d, int n, int64_t pts) { call_data(m_video, d, n, pts, 0, 0); }
+static void cb_audio(const unsigned char *d, int n, int64_t pts, int ct) { call_data(m_audio, d, n, pts, ct, 1); }
 
 static void cb_volume(float db)
 {
@@ -175,7 +176,7 @@ Java_com_vantaflow_kairo_cast_NativeReceiver_nativeStart(JNIEnv *env, jobject th
     m_closed = (*env)->GetMethodID(env, cls, "onConnectionClosed", "()V");
     m_format = (*env)->GetMethodID(env, cls, "onVideoFormat", "(IIIIII)V");
     m_video = (*env)->GetMethodID(env, cls, "onVideoData", "([BIJ)V");
-    m_audio = (*env)->GetMethodID(env, cls, "onAudioData", "([BIJ)V");
+    m_audio = (*env)->GetMethodID(env, cls, "onAudioData", "([BIJI)V");
     m_volume = (*env)->GetMethodID(env, cls, "onAudioVolume", "(F)V");
     m_reset = (*env)->GetMethodID(env, cls, "onVideoReset", "()V");
     (*env)->DeleteLocalRef(env, cls);

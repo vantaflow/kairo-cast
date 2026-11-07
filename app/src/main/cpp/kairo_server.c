@@ -73,7 +73,7 @@ static void cb_audio_process(void *cls, raop_ntp_t *ntp, audio_decode_struct *da
 {
     if (!g_cb.on_audio_data || !data->data || data->data_len <= 0) return;
     uint64_t t = data->ntp_time_local ? data->ntp_time_local : get_local_time();
-    g_cb.on_audio_data(data->data, data->data_len, (int64_t) (t / 1000));
+    g_cb.on_audio_data(data->data, data->data_len, (int64_t) (t / 1000), (int) data->ct);
 }
 
 static void cb_video_process(void *cls, raop_ntp_t *ntp, video_decode_struct *data)

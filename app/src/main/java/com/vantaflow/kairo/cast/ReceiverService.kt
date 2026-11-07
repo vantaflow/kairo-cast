@@ -36,7 +36,7 @@ class ReceiverService : Service() {
     private val listener = object : ReceiverListener {
         override fun onConnectionOpened() {
             if (!accepting) return
-            MirrorBus.start()
+            MirrorBus.start(CastSettings(PrefsStore(this@ReceiverService)).audioEnabled)
             session.opened()
         }
         override fun onConnectionClosed() {
@@ -55,8 +55,14 @@ class ReceiverService : Service() {
             if (!accepting) return
             MirrorBus.pipeline?.onVideoData(data, size, ptsUs)
         }
-        override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long) {}
-        override fun onAudioVolume(volumeDb: Float) {}
+        override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long, codecType: Int) {
+            if (!accepting) return
+            MirrorBus.pipeline?.onAudioData(data, size, ptsUs, codecType)
+        }
+        override fun onAudioVolume(volumeDb: Float) {
+            if (!accepting) return
+            MirrorBus.pipeline?.onAudioVolume(volumeDb)
+        }
         override fun onVideoReset() {
             if (!accepting) return
             MirrorBus.pipeline?.onVideoReset()
@@ -104,6 +110,7 @@ class ReceiverService : Service() {
     private fun startReceiver() {
         val settings = CastSettings(PrefsStore(this))
         val name = settings.name
+        AudioPlayer.logAvailableDecoders()
         accepting = true
         val ok = NativeReceiver.start(name, settings.deviceId, File(filesDir, "airplay.key").path,
             settings.quality.width, settings.quality.height, listener)

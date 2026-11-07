@@ -8,7 +8,7 @@ import android.view.Surface
  * sans activité (sortie sur une surface de remplacement). Créé à l'ouverture de la connexion,
  * libéré à sa fermeture.
  */
-class MirrorPipeline : ReceiverListener {
+class MirrorPipeline(private val audioEnabled: Boolean = true) : ReceiverListener {
     private val lock = Any()
     private val placeholder = PlaceholderSurface()
     private var released = false
@@ -17,6 +17,10 @@ class MirrorPipeline : ReceiverListener {
     private var format: IntArray? = null
     private var formatListener: ((IntArray) -> Unit)? = null
     private var drops = 0L
+    private var audio: AudioPlayer? = null
+    private var audioCt = -1
+    private var audioVolumeDb = 0f
+    private var audioSkipLogged = false
 
     private fun targetSurface(): Surface? = outputSurface ?: placeholder.surface
 
@@ -51,15 +55,19 @@ class MirrorPipeline : ReceiverListener {
 
     fun release() {
         val d: VideoDecoder?
+        val a: AudioPlayer?
         synchronized(lock) {
             if (released) return
             released = true
             d = decoder
+            a = audio
+            audio = null
             decoder = null
             formatListener = null
             outputSurface = null
         }
         Thread({
+            a?.release()
             d?.release()
             placeholder.release()
         }, "kairo-release").start()
@@ -101,9 +109,37 @@ class MirrorPipeline : ReceiverListener {
         d.feed(Frame(data.copyOf(size), size, ptsUs, H264.isKeyFrame(data, size)))
     }
 
-    override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long) {}
+    override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long, codecType: Int) {
+        if (!audioEnabled || size <= 0) return
+        val a: AudioPlayer
+        synchronized(lock) {
+            if (released) return
+            if (codecType != audioCt) {
+                audioCt = codecType
+                Log.i(TAG, "audio : codec ct=$codecType")
+                audio?.release()
+                audio = null
+                if (codecType == AudioPlayer.CT_AAC_ELD || codecType == AudioPlayer.CT_AAC_LC) {
+                    audio = AudioPlayer(codecType).also {
+                        it.setVolumeDb(audioVolumeDb)
+                        it.start()
+                    }
+                } else if (!audioSkipLogged) {
+                    audioSkipLogged = true
+                    Log.w(TAG, "audio : ct=$codecType (ALAC) non pris en charge, pas de son")
+                }
+            }
+            a = audio ?: return
+        }
+        a.feed(data, size, ptsUs)
+    }
 
-    override fun onAudioVolume(volumeDb: Float) {}
+    override fun onAudioVolume(volumeDb: Float) {
+        synchronized(lock) {
+            audioVolumeDb = volumeDb
+            audio?.setVolumeDb(volumeDb)
+        }
+    }
 
     override fun onVideoReset() {
         Log.i(TAG, "onVideoReset : nouveau décodeur au prochain flux")

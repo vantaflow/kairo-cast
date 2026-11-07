@@ -13,7 +13,7 @@ typedef struct kairo_callbacks_s {
     void (*on_connection_closed)(void);
     void (*on_video_format)(int width, int height, int cx, int cy, int cw, int ch);
     void (*on_video_data)(const unsigned char *data, int size, int64_t pts_us);
-    void (*on_audio_data)(const unsigned char *data, int size, int64_t pts_us);
+    void (*on_audio_data)(const unsigned char *data, int size, int64_t pts_us, int codec_type);
     void (*on_audio_volume)(float volume_db);
     void (*on_video_reset)(void);
 } kairo_callbacks_t;
