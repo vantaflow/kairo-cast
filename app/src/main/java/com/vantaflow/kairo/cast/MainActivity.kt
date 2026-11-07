@@ -46,6 +46,7 @@ class MainActivity : Activity() {
         findViewById<TextView>(R.id.ip).text = getString(R.string.ip_label, NetworkInfo.localIpv4(this) ?: getString(R.string.not_connected))
         findViewById<TextView>(R.id.instruction).text =
             getString(R.string.instruction, name)
+        findViewById<TextView>(R.id.instruction_pc).text = getString(R.string.instruction_pc, name)
         collector = scope.launch {
             ReceiverState.status.collect { render(it) }
         }

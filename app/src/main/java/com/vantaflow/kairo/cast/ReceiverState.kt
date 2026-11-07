@@ -28,9 +28,9 @@ object MirrorBus {
         private set
 
     @Synchronized
-    fun start(audioEnabled: Boolean = true) {
+    fun start(audioEnabled: Boolean = true, onKeyFrameNeeded: () -> Unit = {}) {
         pipeline?.release()
-        pipeline = MirrorPipeline(audioEnabled)
+        pipeline = MirrorPipeline(audioEnabled, onKeyFrameNeeded)
     }
 
     @Synchronized

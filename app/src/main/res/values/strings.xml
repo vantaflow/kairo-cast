@@ -6,6 +6,7 @@
     <string name="ip_label">Adresse IP : %1$s</string>
     <string name="not_connected">non connecté</string>
     <string name="instruction">Sur le Mac : Centre de contrôle › Recopie de l\'écran › %1$s</string>
+    <string name="instruction_pc">Sur le PC Windows : Kairo Cast › %1$s (Win+K)</string>
     <string name="status_mirroring">Recopie en cours (%1$d×%2$d)</string>
     <string name="status_waiting">En attente d\'une connexion…</string>
     <string name="status_stopped">Récepteur arrêté</string>

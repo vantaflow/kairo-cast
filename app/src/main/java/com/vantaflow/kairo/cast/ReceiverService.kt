@@ -10,6 +10,9 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import com.vantaflow.kairo.cast.link.Hello
+import com.vantaflow.kairo.cast.link.LinkListener
+import com.vantaflow.kairo.cast.link.LinkServer
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -33,30 +36,94 @@ class ReceiverService : Service() {
         },
     )
 
-    private val listener = object : ReceiverListener {
-        override fun onConnectionOpened() {
-            if (!accepting) return
-            MirrorBus.start(CastSettings(PrefsStore(this@ReceiverService)).audioEnabled)
+    /** Source de la session de recopie ; « la dernière arrivée l'emporte ». */
+    private enum class Source { NONE, AIRPLAY, LINK }
+    private val arb = Any()
+    @Volatile private var owner = Source.NONE
+    private var linkServer: LinkServer? = null
+    private var ignoredLogged = false
+
+    /** Image clé demandée par le décodeur ou l'activité : utile seulement pour Link. */
+    private fun keyFrameNeeded() {
+        if (owner == Source.LINK) linkServer?.requestKeyFrame()
+    }
+
+    /** Prend la main (sous [arb]) ; renvoie la source précédente. */
+    private fun beginSession(src: Source): Source {
+        synchronized(arb) {
+            val prev = owner
+            owner = src
+            ignoredLogged = false
+            val p = MirrorBus.pipeline
+            if (p == null) {
+                MirrorBus.start(CastSettings(PrefsStore(this)).audioEnabled, ::keyFrameNeeded)
+            } else if (prev != src && prev != Source.NONE) {
+                p.onSourceChanged()
+            }
             session.opened()
+            return prev
         }
-        override fun onConnectionClosed() {
-            if (!accepting) return
+    }
+
+    private fun endSession(src: Source) {
+        synchronized(arb) {
+            if (owner != src) return
+            owner = Source.NONE
             session.closed()
             MirrorBus.stop()
             ReceiverState.set(Status.Waiting)
         }
+    }
+
+    /** Vrai si les données AirPlay doivent être traitées ; sinon (Link actif) elles sont ignorées. */
+    private fun airplayActive(): Boolean {
+        if (!accepting) return false
+        if (owner == Source.AIRPLAY) return true
+        if (owner == Source.LINK && !ignoredLogged) {
+            ignoredLogged = true
+            Log.i(TAG, "AirPlay : données ignorées tant que Link est actif")
+        }
+        return false
+    }
+
+    private fun takeOverFromLink() {
+        // Hors de [arb] : closeClient prend le verrou de dispatch du serveur Link.
+        linkServer?.closeClient()
+    }
+
+    private val listener = object : ReceiverListener {
+        override fun onConnectionOpened() {
+            if (!accepting) return
+            val prev = beginSession(Source.AIRPLAY)
+            if (prev == Source.LINK) {
+                Log.i(TAG, "AirPlay arrive : la session Link est fermée")
+                takeOverFromLink()
+            }
+        }
+        override fun onConnectionClosed() {
+            if (!accepting) return
+            endSession(Source.AIRPLAY)
+        }
         override fun onVideoFormat(width: Int, height: Int, contentX: Int, contentY: Int, contentW: Int, contentH: Int) {
             if (!accepting) return
+            // Un nouveau flux AirPlay est une arrivée, même si une connexion était restée ouverte.
+            if (owner != Source.AIRPLAY) {
+                val prev = beginSession(Source.AIRPLAY)
+                if (prev == Source.LINK) {
+                    Log.i(TAG, "AirPlay arrive : la session Link est fermée")
+                    takeOverFromLink()
+                }
+            }
             Log.i(TAG, "onVideoFormat flux ${width}x$height contenu x=$contentX y=$contentY ${contentW}x$contentH")
             ReceiverState.set(Status.Mirroring(width, height))
             MirrorBus.pipeline?.onVideoFormat(width, height, contentX, contentY, contentW, contentH)
         }
         override fun onVideoData(data: ByteArray, size: Int, ptsUs: Long) {
-            if (!accepting) return
+            if (!airplayActive()) return
             MirrorBus.pipeline?.onVideoData(data, size, ptsUs)
         }
         override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long, codecType: Int) {
-            if (!accepting) return
+            if (!airplayActive()) return
             MirrorBus.pipeline?.onAudioData(data, size, ptsUs, codecType)
         }
         override fun onAudioVolume(volumeDb: Float) {
@@ -64,8 +131,30 @@ class ReceiverService : Service() {
             MirrorBus.pipeline?.onAudioVolume(volumeDb)
         }
         override fun onVideoReset() {
-            if (!accepting) return
+            if (!airplayActive()) return
             MirrorBus.pipeline?.onVideoReset()
+        }
+    }
+
+    private val linkListener = object : LinkListener {
+        override fun onLinkOpened(hello: Hello) {
+            if (!accepting) return
+            beginSession(Source.LINK)
+            Log.i(TAG, "Link : session ouverte (${hello.name} ${hello.w}x${hello.h})")
+            ReceiverState.set(Status.Mirroring(hello.w, hello.h))
+            MirrorBus.pipeline?.onVideoFormat(hello.w, hello.h, 0, 0, hello.w, hello.h)
+        }
+        override fun onLinkVideo(data: ByteArray, size: Int, ptsUs: Long, key: Boolean) {
+            if (owner != Source.LINK) return
+            MirrorBus.pipeline?.onVideoData(data, size, ptsUs)
+        }
+        override fun onLinkAudio(pcm: ByteArray, size: Int, ptsUs: Long) {
+            if (owner != Source.LINK) return
+            MirrorBus.pipeline?.onPcmAudio(pcm, size, ptsUs)
+        }
+        override fun onLinkClosed() {
+            Log.i(TAG, "Link : session fermée")
+            endSession(Source.LINK)
         }
     }
 
@@ -122,6 +211,15 @@ class ReceiverService : Service() {
             return
         }
         running = true
+        var linkPort = 0
+        try {
+            val ls = LinkServer(LinkServer.DEFAULT_PORT, linkListener)
+            ls.start()
+            linkServer = ls
+            linkPort = LinkServer.DEFAULT_PORT
+        } catch (e: Exception) {
+            Log.e(TAG, "serveur Link indisponible (port ${LinkServer.DEFAULT_PORT}) : $e")
+        }
         val adv = MdnsAdvertiser(this)
         adv.register(
             name,
@@ -129,6 +227,7 @@ class ReceiverService : Service() {
             NativeReceiver.AIRPLAY_PORT,
             TxtRecord.parse(NativeReceiver.airplayTxt()),
             TxtRecord.parse(NativeReceiver.raopTxt()),
+            linkPort,
         )
         advertiser = adv
         ReceiverState.set(Status.Waiting)
@@ -141,10 +240,15 @@ class ReceiverService : Service() {
         accepting = false
         advertiser?.unregister()
         advertiser = null
+        linkServer?.stop()
+        linkServer = null
         NativeReceiver.stop()
         running = false
-        session.closed()
-        MirrorBus.stop()
+        synchronized(arb) {
+            owner = Source.NONE
+            session.closed()
+            MirrorBus.stop()
+        }
         ReceiverState.set(Status.Stopped)
     }
 

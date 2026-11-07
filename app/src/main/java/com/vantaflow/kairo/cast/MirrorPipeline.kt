@@ -8,7 +8,11 @@ import android.view.Surface
  * sans activité (sortie sur une surface de remplacement). Créé à l'ouverture de la connexion,
  * libéré à sa fermeture.
  */
-class MirrorPipeline(private val audioEnabled: Boolean = true) : ReceiverListener {
+class MirrorPipeline(
+    private val audioEnabled: Boolean = true,
+    /** Appelé quand une image clé serait utile (décodeur reconfiguré sans IDR, activité rattachée). */
+    private val onKeyFrameNeeded: () -> Unit = {},
+) : ReceiverListener {
     private val lock = Any()
     private val placeholder = PlaceholderSurface()
     private var released = false
@@ -36,6 +40,7 @@ class MirrorPipeline(private val audioEnabled: Boolean = true) : ReceiverListene
         }
         Log.i(TAG, "surface de l'activité branchée")
         known?.let(listener)
+        try { onKeyFrameNeeded() } catch (e: Exception) { Log.w(TAG, "demande d'image clé échouée : $e") }
     }
 
     /** Débranche la surface de l'activité ; attend que le décodeur soit passé sur la surface de remplacement. */
@@ -77,7 +82,7 @@ class MirrorPipeline(private val audioEnabled: Boolean = true) : ReceiverListene
         if (released) return null
         decoder?.let { return it }
         val s = targetSurface() ?: return null
-        return VideoDecoder(s).also { d ->
+        return VideoDecoder(s, onKeyFrameNeeded).also { d ->
             format?.let { d.setVideoSize(it[0], it[1]) }
             decoder = d
         }
@@ -132,6 +137,38 @@ class MirrorPipeline(private val audioEnabled: Boolean = true) : ReceiverListene
             a = audio ?: return
         }
         a.feed(data, size, ptsUs)
+    }
+
+    /** PCM s16le 48 kHz stéréo (Kairo Link). */
+    fun onPcmAudio(data: ByteArray, size: Int, ptsUs: Long) {
+        if (!audioEnabled || size <= 0) return
+        val a: AudioPlayer
+        synchronized(lock) {
+            if (released) return
+            if (audioCt != AudioPlayer.CT_PCM) {
+                audioCt = AudioPlayer.CT_PCM
+                Log.i(TAG, "audio : PCM 48000 Hz stéréo")
+                audio?.release()
+                audio = AudioPlayer(AudioPlayer.CT_PCM).also {
+                    it.setVolumeDb(audioVolumeDb)
+                    it.startPcm(48000, 2)
+                }
+            }
+            a = audio ?: return
+        }
+        a.feedPcm(data, size, ptsUs)
+    }
+
+    /** La source (AirPlay <-> Link) change : décodeur et audio repartent à neuf, la surface reste. */
+    fun onSourceChanged() {
+        val a: AudioPlayer?
+        synchronized(lock) {
+            a = audio
+            audio = null
+            audioCt = -1
+        }
+        a?.release()
+        onVideoReset()
     }
 
     override fun onAudioVolume(volumeDb: Float) {

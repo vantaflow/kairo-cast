@@ -11,7 +11,8 @@ import android.view.Surface
  * Décodeur H.264 sur un thread dédié. Une instance = une session : SpsWatcher et file neufs.
  * [feed] peut être appelé depuis n'importe quel thread (la file est bornée).
  */
-class VideoDecoder(private var surface: Surface) {
+class VideoDecoder(private var surface: Surface, private val onKeyFrameNeeded: (() -> Unit)? = null) {
+    private var lastKeyRequestNs = 0L
     private val pending = java.util.concurrent.atomic.AtomicReference<Pair<Surface, java.util.concurrent.CountDownLatch>?>(null)
     private var lastDropped = 0L
     private val queue = FrameQueue(QUEUE_CAPACITY)
@@ -117,7 +118,17 @@ class VideoDecoder(private var surface: Surface) {
         }
     }
 
+    /** Demande une image clé à la source (Kairo Link), au plus une fois par seconde. */
+    private fun requestKeyFrame() {
+        val cb = onKeyFrameNeeded ?: return
+        val now = System.nanoTime()
+        if (lastKeyRequestNs != 0L && now - lastKeyRequestNs < 1_000_000_000L) return
+        lastKeyRequestNs = now
+        try { cb() } catch (e: Exception) { Log.w(TAG, "demande d'image clé échouée : $e") }
+    }
+
     private fun recover() {
+        requestKeyFrame()
         resetCodec()
         if (sps != null && running) {
             try {
@@ -135,11 +146,16 @@ class VideoDecoder(private var surface: Surface) {
         if (watcher.changed(frame.data, frame.size)) {
             Log.i(TAG, "SPS nouveau ou modifié, configuration du décodeur")
             configure()
+            if (!frame.keyFrame) requestKeyFrame()
         } else if (codec == null && sps != null) {
             Log.i(TAG, "reconfiguration du décodeur depuis le SPS/PPS en cache")
             configure()
+            if (!frame.keyFrame) requestKeyFrame()
         }
-        val c = codec ?: return // pas encore de SPS
+        val c = codec ?: run {
+            requestKeyFrame() // pas encore de SPS
+            return
+        }
         // Jamais d'image abandonnée faute de tampon : on attend (la chaîne de références doit rester intacte).
         var idx = c.dequeueInputBuffer(INPUT_TIMEOUT_US)
         while (idx < 0 && running) {
