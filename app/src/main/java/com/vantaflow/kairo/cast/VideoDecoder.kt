@@ -127,7 +127,12 @@ class VideoDecoder(private var surface: Surface, private val onKeyFrameNeeded: (
         try { cb() } catch (e: Exception) { Log.w(TAG, "demande d'image clé échouée : $e") }
     }
 
+    /** Nombre de réinitialisations du codec (mesure/debug). */
+    @Volatile var errorCount = 0
+        private set
+
     private fun recover() {
+        errorCount++
         requestKeyFrame()
         resetCodec()
         if (sps != null && running) {
