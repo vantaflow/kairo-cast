@@ -41,37 +41,66 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        val name = CastSettings(PrefsStore(this)).name
-        findViewById<TextView>(R.id.name).text = name
+        val settings = CastSettings(PrefsStore(this))
+        val names = settings.slotNames
         findViewById<TextView>(R.id.ip).text = getString(R.string.ip_label, NetworkInfo.localIpv4(this) ?: getString(R.string.not_connected))
-        findViewById<TextView>(R.id.instruction).text =
-            getString(R.string.instruction, name)
-        findViewById<TextView>(R.id.instruction_pc).text = getString(R.string.instruction_pc, name)
+        findViewById<TextView>(R.id.instruction).text = getString(R.string.instruction, names.joinToString(" / "))
+        findViewById<TextView>(R.id.instruction_pc).text = getString(R.string.instruction_pc, names.joinToString(" / "))
         collector = scope.launch {
+            SlotsState.slots.collect { renderSlots(names, it) }
+        }
+        collector2 = scope.launch {
             ReceiverState.status.collect { render(it) }
         }
         (if (resume.visibility == View.VISIBLE) resume else findViewById<Button>(R.id.settings)).requestFocus()
     }
 
+    private var collector2: Job? = null
+
+    private fun phaseLabel(s: SlotState?): String = when (s?.phase) {
+        SlotPhase.MIRRORING -> getString(R.string.slot_mirroring, s.width, s.height)
+        SlotPhase.MAC_WAITING -> getString(R.string.slot_mac_waiting)
+        SlotPhase.SATURATED -> getString(R.string.slot_saturated)
+        SlotPhase.WAITING -> getString(R.string.slot_waiting)
+        else -> getString(R.string.slot_stopped)
+    }
+
+    private fun renderSlots(names: List<String>, states: List<SlotState>) {
+        val box = findViewById<android.widget.LinearLayout>(R.id.slots)
+        box.removeAllViews()
+        val single = names.size == 1
+        names.forEachIndexed { i, name ->
+            val st = states.firstOrNull { it.slot == i }
+            box.addView(TextView(this).apply {
+                text = name
+                setTextColor(getColor(R.color.kairo_text))
+                textSize = if (single) 56f else 36f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                gravity = android.view.Gravity.CENTER
+            })
+            if (!single || st?.phase != SlotPhase.WAITING) {
+                box.addView(TextView(this).apply {
+                    text = phaseLabel(st)
+                    setTextColor(getColor(R.color.kairo_muted))
+                    textSize = 20f
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(0, 0, 0, (8 * resources.displayMetrics.density).toInt())
+                })
+            }
+        }
+    }
+
     private fun render(s: Status) {
         when (s) {
             is Status.Mirroring -> {
-                statusView.text = getString(R.string.status_mirroring, s.width, s.height)
+                statusView.text = ""
                 if (resume.visibility != View.VISIBLE) {
                     resume.visibility = View.VISIBLE
                     resume.requestFocus()
                 }
             }
-            Status.Waiting -> {
-                statusView.text = getString(R.string.status_waiting)
-                resume.visibility = View.GONE
-            }
-            Status.MacWaiting -> {
-                statusView.text = getString(R.string.status_mac_waiting)
-                resume.visibility = View.GONE
-            }
-            Status.Stopped -> {
-                statusView.text = getString(R.string.status_stopped)
+            else -> {
+                statusView.text = if (s == Status.Stopped) getString(R.string.status_stopped) else ""
                 resume.visibility = View.GONE
             }
         }
@@ -79,6 +108,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         collector?.cancel()
+        collector2?.cancel()
         super.onPause()
     }
 

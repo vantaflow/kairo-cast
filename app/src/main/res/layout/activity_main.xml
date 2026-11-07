@@ -15,14 +15,13 @@
         android:textSize="28sp"
         android:textStyle="bold" />
 
-    <TextView
-        android:id="@+id/name"
+    <LinearLayout
+        android:id="@+id/slots"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:textColor="@color/kairo_text"
-        android:textSize="56sp"
-        android:textStyle="bold" />
+        android:gravity="center_horizontal"
+        android:orientation="vertical" />
 
     <TextView
         android:id="@+id/ip"
