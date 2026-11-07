@@ -20,7 +20,9 @@ import android.widget.Toast
 class MirrorActivity : Activity() {
     private lateinit var texture: TextureView
     private lateinit var settings: CastSettings
-    private var pipeline: MirrorPipeline? = null
+    private var toast: Toast? = null
+    private val formatListener: (IntArray) -> Unit = { f -> runOnUiThread { onFormat(f[0], f[1], f[2], f[3], f[4], f[5]) } }
+    private var attached: MirrorPipeline? = null
     private var surface: Surface? = null
     private var videoW = 0
     private var videoH = 0
@@ -39,10 +41,6 @@ class MirrorActivity : Activity() {
         setContentView(R.layout.activity_mirror)
         settings = CastSettings(PrefsStore(this))
         texture = findViewById(R.id.texture)
-        (ReceiverState.status.value as? Status.Mirroring)?.let {
-            videoW = it.width
-            videoH = it.height
-        }
         texture.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, orr, ob ->
             if (r - l != orr - ol || b - t != ob - ot) applyTransform()
         }
@@ -50,11 +48,15 @@ class MirrorActivity : Activity() {
             override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
                 val s = Surface(st)
                 surface = s
-                val size = if (videoW > 0 && videoH > 0) videoW to videoH else null
-                val p = MirrorPipeline(s, size) { fw, fh, cx, cy, cw, ch -> runOnUiThread { onFormat(fw, fh, cx, cy, cw, ch) } }
-                pipeline = p
-                MirrorBus.sink = p
-                Log.i(TAG, "surface prête ${w}x$h, pipeline branché")
+                val p = MirrorBus.pipeline
+                if (p == null) {
+                    Log.w(TAG, "aucune recopie en cours : fermeture")
+                    finish()
+                    return
+                }
+                attached = p
+                p.attach(s, formatListener)
+                Log.i(TAG, "surface prête ${w}x$h, branchée au pipeline")
                 applyTransform()
             }
 
@@ -80,10 +82,8 @@ class MirrorActivity : Activity() {
     }
 
     private fun detach() {
-        val p = pipeline
-        if (p != null && MirrorBus.sink === p) MirrorBus.sink = null
-        pipeline = null
-        p?.release()
+        attached?.detach(formatListener)
+        attached = null
         surface?.release()
         surface = null
     }
@@ -116,7 +116,8 @@ class MirrorActivity : Activity() {
             DisplayMode.STRETCH -> "Étirer"
             DisplayMode.FIT -> "Ajuster"
         }
-        Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
+        toast?.cancel()
+        toast = Toast.makeText(this, label, Toast.LENGTH_SHORT).also { it.show() }
         Log.i(TAG, "mode d'affichage : $next")
     }
 

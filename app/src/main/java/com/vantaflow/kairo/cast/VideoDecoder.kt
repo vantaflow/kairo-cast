@@ -11,7 +11,9 @@ import android.view.Surface
  * Décodeur H.264 sur un thread dédié. Une instance = une session : SpsWatcher et file neufs.
  * [feed] peut être appelé depuis n'importe quel thread (la file est bornée).
  */
-class VideoDecoder(val surface: Surface) {
+class VideoDecoder(private var surface: Surface) {
+    private val pending = java.util.concurrent.atomic.AtomicReference<Pair<Surface, java.util.concurrent.CountDownLatch>?>(null)
+    private var lastDropped = 0L
     private val queue = FrameQueue(QUEUE_CAPACITY)
     private var sps: ByteArray? = null // thread décodeur uniquement
     private var pps: ByteArray? = null
@@ -39,9 +41,41 @@ class VideoDecoder(val surface: Surface) {
     }
 
     fun feed(frame: Frame) {
-        if (running) queue.offer(frame)
+        if (!running) return
+        queue.offer(frame)
+        val d = queue.dropped
+        if (d != lastDropped) {
+            lastDropped = d
+            if (d == 1L || d % 50 == 0L) Log.w(TAG, "file pleine : images retirées au total $d")
+        }
     }
 
+    /** Change la surface de sortie sans interrompre le décodage (appliqué par le thread décodeur). */
+    fun setOutputSurface(s: Surface, waitMs: Long = 0) {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        pending.getAndSet(s to latch)?.second?.countDown()
+        if (waitMs > 0 && running) {
+            try { latch.await(waitMs, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: InterruptedException) {}
+        }
+    }
+
+    private fun applyPendingSurface() {
+        val (s, latch) = pending.getAndSet(null) ?: return
+        surface = s
+        val c = codec
+        if (c != null) {
+            try {
+                c.setOutputSurface(s)
+                Log.i(TAG, "surface de sortie changée")
+            } catch (e: Exception) {
+                Log.e(TAG, "setOutputSurface impossible, reconfiguration", e)
+                recover()
+            }
+        }
+        latch.countDown()
+    }
+
+    /** Bloque jusqu'à 2 s : ne pas appeler depuis le thread natif ni le thread principal. */
     fun release() {
         running = false
         thread.interrupt()
@@ -51,11 +85,13 @@ class VideoDecoder(val surface: Surface) {
             Thread.currentThread().interrupt()
         }
         queue.clear()
+        pending.getAndSet(null)?.second?.countDown()
     }
 
     private fun run() {
         try {
             while (running) {
+                applyPendingSurface()
                 val frame = try {
                     queue.poll(10)
                 } catch (_: InterruptedException) {
@@ -153,6 +189,7 @@ class VideoDecoder(val surface: Surface) {
     }
 
     private fun drain() {
+        applyPendingSurface()
         val c = codec ?: return
         val info = MediaCodec.BufferInfo()
         while (running) {

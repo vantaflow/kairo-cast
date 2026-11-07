@@ -36,37 +36,30 @@ class ReceiverService : Service() {
     private val listener = object : ReceiverListener {
         override fun onConnectionOpened() {
             if (!accepting) return
-            MirrorBus.clearCache()
+            MirrorBus.start()
             session.opened()
-            MirrorBus.sink?.onConnectionOpened()
         }
         override fun onConnectionClosed() {
             if (!accepting) return
             session.closed()
-            MirrorBus.clearCache()
-            MirrorBus.sink?.onConnectionClosed()
+            MirrorBus.stop()
             ReceiverState.set(Status.Waiting)
         }
         override fun onVideoFormat(width: Int, height: Int, contentX: Int, contentY: Int, contentW: Int, contentH: Int) {
             if (!accepting) return
             Log.i(TAG, "onVideoFormat flux ${width}x$height contenu x=$contentX y=$contentY ${contentW}x$contentH")
             ReceiverState.set(Status.Mirroring(width, height))
-            MirrorBus.remember(width, height, contentX, contentY, contentW, contentH)
-            MirrorBus.sink?.onVideoFormat(width, height, contentX, contentY, contentW, contentH)
+            MirrorBus.pipeline?.onVideoFormat(width, height, contentX, contentY, contentW, contentH)
         }
         override fun onVideoData(data: ByteArray, size: Int, ptsUs: Long) {
-            MirrorBus.rememberVideo(data, size, ptsUs)
-            MirrorBus.sink?.onVideoData(data, size, ptsUs)
+            if (!accepting) return
+            MirrorBus.pipeline?.onVideoData(data, size, ptsUs)
         }
-        override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long) {
-            MirrorBus.sink?.onAudioData(data, size, ptsUs)
-        }
-        override fun onAudioVolume(volumeDb: Float) {
-            MirrorBus.sink?.onAudioVolume(volumeDb)
-        }
+        override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long) {}
+        override fun onAudioVolume(volumeDb: Float) {}
         override fun onVideoReset() {
-            MirrorBus.clearCache()
-            MirrorBus.sink?.onVideoReset()
+            if (!accepting) return
+            MirrorBus.pipeline?.onVideoReset()
         }
     }
 
@@ -143,6 +136,7 @@ class ReceiverService : Service() {
         NativeReceiver.stop()
         running = false
         session.closed()
+        MirrorBus.stop()
         ReceiverState.set(Status.Stopped)
     }
 

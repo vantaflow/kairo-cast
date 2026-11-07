@@ -31,4 +31,17 @@ class SpsWatcherTest {
         assertFalse(w.changed(slice, slice.size))
         assertTrue(w.changed(sps2, sps2.size))
     }
+
+    @Test fun idrAndConfigOnly() {
+        val cfg = sps1 + b(0, 0, 0, 1, 0x68, 7)
+        val idr = cfg + b(0, 0, 0, 1, 0x65, 1, 1)
+        assertTrue(H264.isConfigOnly(cfg, cfg.size))
+        assertFalse(H264.isConfigOnly(idr, idr.size))
+        assertFalse(H264.isConfigOnly(slice, slice.size))
+        assertTrue(H264.hasIdr(idr, idr.size))
+        assertFalse(H264.hasIdr(cfg, cfg.size))
+        assertFalse(H264.hasIdr(slice, slice.size))
+        assertArrayEquals(b(0x68, 7), H264.extractPps(idr, idr.size))
+        assertNull(H264.extractPps(slice, slice.size))
+    }
 }
