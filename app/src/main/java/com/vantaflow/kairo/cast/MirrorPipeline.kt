@@ -8,6 +8,18 @@ interface PipelineFeed : ReceiverListener {
     fun onPcmAudio(data: ByteArray, size: Int, ptsUs: Long)
     fun onSourceChanged()
     fun setAudioMuted(muted: Boolean)
+    /** Appelé quand le décodeur matériel manque de ressources (l'emplacement passe en saturation). */
+    var onResourceError: () -> Unit
+}
+
+/** Lecteur audio d'un pipeline (fabriquable en test). */
+interface AudioSink {
+    fun setVolumeDb(db: Float)
+    fun start()
+    fun startPcm(rate: Int, channels: Int)
+    fun feed(data: ByteArray, size: Int, ptsUs: Long)
+    fun feedPcm(data: ByteArray, size: Int, ptsUs: Long)
+    fun release()
 }
 
 /**
@@ -19,23 +31,40 @@ class MirrorPipeline(
     private val audioEnabled: Boolean = true,
     /** Appelé quand une image clé serait utile (décodeur reconfiguré sans IDR, activité rattachée). */
     private val onKeyFrameNeeded: () -> Unit = {},
+    audible: Boolean = true,
+    private val audioFactory: (Int) -> AudioSink = { AudioPlayerSink(AudioPlayer(it)) },
 ) : PipelineFeed {
-    @Volatile private var audioMuted = false
+    @Volatile private var audible = audible
+    override var onResourceError: () -> Unit = {}
 
     /** Coupe le son de ce flux sans toucher au décodeur (un seul emplacement audible à la fois). */
-    override fun setAudioMuted(muted: Boolean) {
-        audioMuted = muted
+    override fun setAudioMuted(muted: Boolean) = setAudible(!muted)
+
+    /** Rend ce flux audible (le lecteur est créé au prochain paquet) ou le coupe (le lecteur est libéré). */
+    fun setAudible(on: Boolean) {
+        val old: AudioSink?
+        synchronized(lock) {
+            if (audible == on) return
+            audible = on
+            if (on) { old = null } else {
+                old = audio
+                audio = null
+                audioCt = -1
+            }
+        }
+        old?.release()
     }
 
     private val lock = Any()
-    private val placeholder = PlaceholderSurface()
+    private val placeholderLazy = lazy { PlaceholderSurface() }
+    private val placeholder by placeholderLazy
     private var released = false
     private var decoder: VideoDecoder? = null
     private var outputSurface: Surface? = null // surface de l'activité, ou null
     private var format: IntArray? = null
     private var formatListener: ((IntArray) -> Unit)? = null
     private var drops = 0L
-    private var audio: AudioPlayer? = null
+    private var audio: AudioSink? = null
     private var audioCt = -1
     private var audioVolumeDb = 0f
     private var audioSkipLogged = false
@@ -74,7 +103,7 @@ class MirrorPipeline(
 
     fun release() {
         val d: VideoDecoder?
-        val a: AudioPlayer?
+        val a: AudioSink?
         synchronized(lock) {
             if (released) return
             released = true
@@ -88,7 +117,7 @@ class MirrorPipeline(
         Thread({
             a?.release()
             d?.release()
-            placeholder.release()
+            if (placeholderLazy.isInitialized()) placeholder.release()
         }, "kairo-release").start()
     }
 
@@ -96,7 +125,7 @@ class MirrorPipeline(
         if (released) return null
         decoder?.let { return it }
         val s = targetSurface() ?: return null
-        return VideoDecoder(s, onKeyFrameNeeded).also { d ->
+        return VideoDecoder(s, onKeyFrameNeeded) { onResourceError() }.also { d ->
             format?.let { d.setVideoSize(it[0], it[1]) }
             decoder = d
         }
@@ -129,8 +158,8 @@ class MirrorPipeline(
     }
 
     override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long, codecType: Int) {
-        if (!audioEnabled || audioMuted || size <= 0) return
-        val a: AudioPlayer
+        if (!audioEnabled || !audible || size <= 0) return
+        val a: AudioSink
         synchronized(lock) {
             if (released) return
             if (codecType != audioCt) {
@@ -139,7 +168,7 @@ class MirrorPipeline(
                 audio?.release()
                 audio = null
                 if (codecType == AudioPlayer.CT_AAC_ELD || codecType == AudioPlayer.CT_AAC_LC) {
-                    audio = AudioPlayer(codecType).also {
+                    audio = audioFactory(codecType).also {
                         it.setVolumeDb(audioVolumeDb)
                         it.start()
                     }
@@ -155,15 +184,15 @@ class MirrorPipeline(
 
     /** PCM s16le 48 kHz stéréo (Kairo Link). */
     override fun onPcmAudio(data: ByteArray, size: Int, ptsUs: Long) {
-        if (!audioEnabled || audioMuted || size <= 0) return
-        val a: AudioPlayer
+        if (!audioEnabled || !audible || size <= 0) return
+        val a: AudioSink
         synchronized(lock) {
             if (released) return
             if (audioCt != AudioPlayer.CT_PCM) {
                 audioCt = AudioPlayer.CT_PCM
                 Log.i(TAG, "audio : PCM 48000 Hz stéréo")
                 audio?.release()
-                audio = AudioPlayer(AudioPlayer.CT_PCM).also {
+                audio = audioFactory(AudioPlayer.CT_PCM).also {
                     it.setVolumeDb(audioVolumeDb)
                     it.startPcm(48000, 2)
                 }
@@ -175,7 +204,7 @@ class MirrorPipeline(
 
     /** La source (AirPlay <-> Link) change : décodeur et audio repartent à neuf, la surface reste. */
     override fun onSourceChanged() {
-        val a: AudioPlayer?
+        val a: AudioSink?
         synchronized(lock) {
             a = audio
             audio = null
@@ -207,4 +236,14 @@ class MirrorPipeline(
     private companion object {
         const val TAG = "KairoCast"
     }
+}
+
+/** Adaptateur [AudioPlayer] → [AudioSink]. */
+class AudioPlayerSink(private val p: AudioPlayer) : AudioSink {
+    override fun setVolumeDb(db: Float) = p.setVolumeDb(db)
+    override fun start() { p.start() }
+    override fun startPcm(rate: Int, channels: Int) { p.startPcm(rate, channels) }
+    override fun feed(data: ByteArray, size: Int, ptsUs: Long) = p.feed(data, size, ptsUs)
+    override fun feedPcm(data: ByteArray, size: Int, ptsUs: Long) = p.feedPcm(data, size, ptsUs)
+    override fun release() = p.release()
 }

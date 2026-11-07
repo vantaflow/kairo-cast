@@ -122,7 +122,7 @@ class ReceiverService : Service() {
 
     private fun onSlotsFreed(slots: List<Int>) {
         val cs = synchronized(controllers) { slots.mapNotNull { controllers[it] } }
-        cs.forEach { it.resumeFromSaturation() }
+        cs.forEach { it.onSlotReleased() }
     }
 
     /** Rappel des contrôleurs (thread quelconque) : ne fait que lire l'état et poster. */

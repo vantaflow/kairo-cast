@@ -11,7 +11,13 @@ import android.view.Surface
  * Décodeur H.264 sur un thread dédié. Une instance = une session : SpsWatcher et file neufs.
  * [feed] peut être appelé depuis n'importe quel thread (la file est bornée).
  */
-class VideoDecoder(private var surface: Surface, private val onKeyFrameNeeded: (() -> Unit)? = null) {
+class VideoDecoder(
+    private var surface: Surface,
+    private val onKeyFrameNeeded: (() -> Unit)? = null,
+    /** Appelé (une fois) quand le décodeur matériel n'a plus de ressources : aucun repli logiciel. */
+    private val onResourceError: (() -> Unit)? = null,
+) {
+    @Volatile private var resourceBlocked = false
     private var lastKeyRequestNs = 0L
     private val pending = java.util.concurrent.atomic.AtomicReference<Pair<Surface, java.util.concurrent.CountDownLatch>?>(null)
     private var lastDropped = 0L
@@ -132,6 +138,7 @@ class VideoDecoder(private var surface: Surface, private val onKeyFrameNeeded: (
         private set
 
     private fun recover() {
+        if (resourceBlocked) return
         errorCount++
         requestKeyFrame()
         resetCodec()
@@ -146,6 +153,7 @@ class VideoDecoder(private var surface: Surface, private val onKeyFrameNeeded: (
     }
 
     private fun handle(frame: Frame) {
+        if (resourceBlocked) return
         H264.extractSps(frame.data, frame.size)?.let { sps = it }
         H264.extractPps(frame.data, frame.size)?.let { pps = it }
         if (watcher.changed(frame.data, frame.size)) {
@@ -209,6 +217,12 @@ class VideoDecoder(private var surface: Surface, private val onKeyFrameNeeded: (
             Log.i(TAG, "décodeur configuré : ${c.name} ${width}x$height lowLatency=$lowLatency")
         } catch (e: Exception) {
             try { c.release() } catch (_: Exception) {}
+            if (isResourceError(e)) {
+                Log.e(TAG, "ressources de décodage insuffisantes : $e")
+                resourceBlocked = true
+                try { onResourceError?.invoke() } catch (x: Exception) { Log.w(TAG, "onResourceError : $x") }
+                return
+            }
             throw e
         }
     }
@@ -245,8 +259,17 @@ class VideoDecoder(private var surface: Surface, private val onKeyFrameNeeded: (
         try { c.release() } catch (_: Exception) {}
     }
 
-    private companion object {
-        const val TAG = "KairoCast"
+    companion object {
+        /** Erreur de ressource du codec (CodecException.ERROR_INSUFFICIENT_RESOURCE = 1100, ou erreur de ressource signalée). */
+        fun isResourceError(e: Throwable): Boolean {
+            if (e is MediaCodec.CodecException) {
+                if (e.errorCode == 1100) return true
+                if (Build.VERSION.SDK_INT >= 23 && e.isTransient) return true
+            }
+            return false
+        }
+
+        private const val TAG = "KairoCast"
         const val MIME = "video/avc"
         const val QUEUE_CAPACITY = 120
         const val INPUT_TIMEOUT_US = 5_000L

@@ -19,6 +19,7 @@ class SlotControllerTest {
     private class FakePipeline : PipelineFeed {
         val events = ArrayList<String>()
         var muted = false
+        override var onResourceError: () -> Unit = {}
         override fun onPcmAudio(data: ByteArray, size: Int, ptsUs: Long) { events += "pcm" }
         override fun onSourceChanged() { events += "switch" }
         override fun setAudioMuted(muted: Boolean) { this.muted = muted }

@@ -52,6 +52,15 @@ interface SlotHost {
     ): () -> Unit
 }
 
+enum class SaturationAction { RUN, REFUSE_KEEP_SESSION, REFUSE_CLOSE_LINK }
+
+/** Que faire d'une source selon la décision de [SlotPolicy] : AirPlay garde sa session (images ignorées), Link est fermé par BYE. */
+fun admissionOutcome(admission: Admission, source: MirrorSource): SaturationAction = when (admission) {
+    Admission.Accepted -> SaturationAction.RUN
+    Admission.Saturated ->
+        if (source == MirrorSource.LINK) SaturationAction.REFUSE_CLOSE_LINK else SaturationAction.REFUSE_KEEP_SESSION
+}
+
 /**
  * Un emplacement : serveur AirPlay natif, serveur Link, annonces, arbitrage Mac/PC (« dernier arrivé »)
  * et admission par [SlotPolicy]. [start]/[stop] ne sont jamais appelés depuis un rappel natif
@@ -179,6 +188,26 @@ class SlotController(
         host.pipeline(slot)?.setAudioMuted(muted)
     }
 
+    /** Le budget libéré par un autre emplacement profite à celui-ci : Link redemande une image clé, AirPlay attend la prochaine IDR. */
+    fun onSlotReleased() = resumeFromSaturation()
+
+    /** Admission d'un flux de [w]x[h] ; vrai si accepté, sinon l'emplacement passe en SATURATED. */
+    internal fun onStreamFormat(w: Int, h: Int): Boolean = synchronized(arb) { admit(w, h) }
+
+    /** Le décodeur matériel n'a plus de ressources : même traitement qu'une saturation par le budget. */
+    internal fun onResourceError() {
+        synchronized(arb) {
+            if (owner == MirrorSource.NONE || saturated) return
+            saturated = true
+            Log.w(TAG, "[$slot] ressources de décodage insuffisantes")
+            setPhase(SlotPhase.SATURATED)
+            // Le décodeur bloqué est jeté ; un nouveau sera créé à la reprise.
+            host.pipeline(slot)?.onVideoReset()
+        }
+        if (owner == MirrorSource.LINK) Thread({ link?.closeClient() }, "kairo-link-bye").start()
+        changed()
+    }
+
     /** Reprise après libération de budget (appelé sur n'importe quel thread, jamais de cycle de vie natif). */
     fun resumeFromSaturation() {
         synchronized(arb) {
@@ -203,7 +232,10 @@ class SlotController(
             when (SessionArbiter.action(prev, src, p != null)) {
                 PipelineAction.START_FRESH -> {
                     host.startPipeline(slot, settings.audioEnabled, ::keyFrameNeeded)
-                    host.pipeline(slot)?.setAudioMuted(audioMuted)
+                    host.pipeline(slot)?.let {
+                        it.setAudioMuted(audioMuted)
+                        it.onResourceError = ::onResourceError
+                    }
                 }
                 PipelineAction.SWITCH_SOURCE -> p?.onSourceChanged()
             }
@@ -240,9 +272,9 @@ class SlotController(
     /** Admission par la politique ; vrai si le flux est accepté. Sous [arb]. */
     private fun admit(w: Int, h: Int): Boolean {
         width = w; height = h
-        return when (policy.admit(slot, w, h)) {
-            Admission.Accepted -> { saturated = false; setPhase(SlotPhase.MIRRORING); true }
-            Admission.Saturated -> {
+        return when (admissionOutcome(policy.admit(slot, w, h), owner)) {
+            SaturationAction.RUN -> { saturated = false; setPhase(SlotPhase.MIRRORING); true }
+            SaturationAction.REFUSE_KEEP_SESSION, SaturationAction.REFUSE_CLOSE_LINK -> {
                 saturated = true
                 Log.w(TAG, "[$slot] ${SlotPolicy.MESSAGE_SATURATED} (${w}x$h)")
                 setPhase(SlotPhase.SATURATED)
@@ -281,7 +313,7 @@ class SlotController(
                 }
             }
             Log.i(TAG, "[$slot] onVideoFormat flux ${width}x$height contenu x=$contentX y=$contentY ${contentW}x$contentH")
-            val ok = synchronized(arb) { admit(width, height) }
+            val ok = onStreamFormat(width, height)
             if (ok) host.pipeline(slot)?.onVideoFormat(width, height, contentX, contentY, contentW, contentH)
             changed()
         }
@@ -308,7 +340,7 @@ class SlotController(
             if (!accepting) return
             beginSession(MirrorSource.LINK)
             Log.i(TAG, "[$slot] Link : session ouverte (${hello.name} ${hello.w}x${hello.h})")
-            val ok = synchronized(arb) { admit(hello.w, hello.h) }
+            val ok = onStreamFormat(hello.w, hello.h)
             if (ok) host.pipeline(slot)?.onVideoFormat(hello.w, hello.h, 0, 0, hello.w, hello.h)
             else Thread({ link?.closeClient() }, "kairo-link-bye").start() // saturé : BYE hors du rappel ; onLinkClosed libère
             changed()
