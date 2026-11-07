@@ -12,6 +12,8 @@ Récepteur AirPlay de recopie d'écran pour Android TV, compagnon de Kairo. Il p
 
 **Kairo Link (Windows)** : un seul émetteur à la fois, le dernier arrivé l'emporte. Si une session Windows prend la main pendant que le Mac est connecté, puis se termine, l'image du Mac ne revient pas toute seule (AirPlay ne permet pas de redemander une image) : l'accueil affiche « Mac en attente : relancez la recopie depuis le Mac ».
 
+Kairo Link, comme AirPlay sans code, accepte n'importe quel appareil du réseau local.
+
 ### Réglages
 
 - **Nom du récepteur** : nom visible sur le Mac.
