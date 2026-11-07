@@ -1,5 +1,7 @@
 # Kairo Cast
 
+[![Dernière version](https://img.shields.io/github/v/release/vantaflow/kairo-cast?label=version&color=2563eb)](https://github.com/vantaflow/kairo-cast/releases/latest) ![Android TV 11+](https://img.shields.io/badge/Android%20TV-11%2B-3ddc84) ![Code Downloader 2534592](https://img.shields.io/badge/Downloader-2534592-f97316)
+
 Récepteur AirPlay de recopie d'écran pour Android TV, compagnon de Kairo. Il permet d'afficher l'écran d'un Mac (image jusqu'en 4K et son) sur une box ou un téléviseur Android TV.
 
 ## Utilisation
@@ -20,6 +22,11 @@ Récepteur AirPlay de recopie d'écran pour Android TV, compagnon de Kairo. Il p
 - **Afficher par-dessus les autres applis** : autorisation nécessaire pour que la recopie s'ouvre au-dessus d'une autre application.
 
 ## Installation
+
+Sur n'importe quelle TV ou box Android TV 11+ :
+
+- **Downloader** : code **2534592**.
+- **Lien direct** (toujours la dernière version) : https://github.com/vantaflow/kairo-cast/releases/latest/download/kairo-cast.apk
 
 Avec `adb` (la box doit accepter le débogage réseau) :
 
