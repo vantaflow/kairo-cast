@@ -5,5 +5,10 @@
             android:name=".debug.DecodeHarnessActivity"
             android:exported="true"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+        <activity
+            android:name=".debug.SpikeS2Activity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+        <service android:name=".debug.SpikeS2Service" android:exported="true" />
     </application>
 </manifest>
