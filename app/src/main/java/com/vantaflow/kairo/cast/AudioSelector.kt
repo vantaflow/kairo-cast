@@ -10,6 +10,10 @@ class AudioSelector(
     var audioSlot: Int? = null
         private set
 
+    /** Emplacement épinglé par l'utilisateur ; null = le son suit le focus. Conservé même si l'emplacement s'éteint. */
+    var pinned: Int? = null
+        private set
+
     private var active: List<Int> = emptyList()
     private var pendingSlot: Int? = null
     private var pendingSince = 0L
@@ -26,13 +30,29 @@ class AudioSelector(
         notify(synchronized(this) {
             this.active = active.distinct().sorted()
             if (pendingSlot !in this.active) pendingSlot = null
-            if (audioSlot == null || audioSlot !in this.active) set(this.active.firstOrNull()) else NONE
+            settle()
         })
+    }
+
+    /** Épingle (ou libère avec null) la source audible. */
+    fun setPinned(slot: Int?) {
+        notify(synchronized(this) {
+            pinned = slot
+            pendingSlot = null
+            settle()
+        })
+    }
+
+    /** Source épinglée active, sinon source courante si elle est toujours active, sinon la première. */
+    private fun settle(): Change {
+        val p = pinned
+        if (p != null && p in active) return set(p)
+        return if (audioSlot == null || audioSlot !in active) set(active.firstOrNull()) else NONE
     }
 
     @Synchronized
     fun onFocus(slot: Int) {
-        if (slot !in active) return
+        if (slot !in active || pinned != null) return
         if (slot == audioSlot) {
             pendingSlot = null
         } else if (slot != pendingSlot) {

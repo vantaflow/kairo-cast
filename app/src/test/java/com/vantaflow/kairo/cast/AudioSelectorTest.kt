@@ -84,4 +84,33 @@ class AudioSelectorTest {
         now = 2000; s.tick(); s.tick()
         assertEquals(listOf<Int?>(0), calls)
     }
+
+    @Test fun pinnedIgnoresFocus() {
+        val s = selector()
+        s.onActiveChanged(listOf(0, 1, 2))
+        s.setPinned(2)
+        assertEquals(2, s.audioSlot)
+        s.onFocus(1); now += 5000; s.tick()
+        assertEquals(2, s.audioSlot)
+    }
+
+    @Test fun pinnedLeavesFallsBackThenRegains() {
+        val s = selector()
+        s.onActiveChanged(listOf(0, 1, 2))
+        s.setPinned(2)
+        s.onActiveChanged(listOf(1, 0))
+        assertEquals(0, s.audioSlot)
+        assertEquals(2, s.pinned)
+        s.onActiveChanged(listOf(0, 1, 2))
+        assertEquals(2, s.audioSlot)
+    }
+
+    @Test fun unpinFollowsFocusAgain() {
+        val s = selector()
+        s.onActiveChanged(listOf(0, 1))
+        s.setPinned(1)
+        s.setPinned(null)
+        s.onFocus(0); now += 1000; s.tick()
+        assertEquals(0, s.audioSlot)
+    }
 }

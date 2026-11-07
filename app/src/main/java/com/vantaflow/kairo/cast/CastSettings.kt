@@ -41,6 +41,11 @@ class CastSettings(
         get() = store.getString(KEY_SLOT_COUNT)?.toIntOrNull()?.takeIf { it in ALLOWED_SLOT_COUNTS } ?: 1
         set(value) = store.putString(KEY_SLOT_COUNT, (if (value in ALLOWED_SLOT_COUNTS) value else 1).toString())
 
+    /** Source audio épinglée (null = le son suit la tuile sélectionnée). */
+    var audioPin: Int?
+        get() = store.getString(KEY_AUDIO_PIN)?.toIntOrNull()?.takeIf { it in 0 until MAX_SLOTS }
+        set(value) = store.putString(KEY_AUDIO_PIN, value?.takeIf { it in 0 until MAX_SLOTS }?.toString() ?: "follow")
+
     fun slotName(slot: Int): String {
         checkSlot(slot)
         val raw = store.getString(SlotIdentity.nameKey(slot)) ?: return SlotIdentity.defaultName(slot)
@@ -99,7 +104,8 @@ class CastSettings(
         const val KEY_QUALITY = "stream_quality"
         const val KEY_AUDIO = "audio_enabled"
         const val KEY_BOOT = "start_on_boot"
+        const val KEY_AUDIO_PIN = "audio_pin"
         const val KEY_SLOT_COUNT = "slot_count"
-        val ALLOWED_SLOT_COUNTS = listOf(1, 2, 4)
+        val ALLOWED_SLOT_COUNTS = listOf(1, 2, 3, 4)
     }
 }

@@ -22,6 +22,7 @@ class SettingsActivity : Activity() {
     private val labels = object : SettingsRows.Labels {
         override fun sourceN(n: Int, name: String) = getString(R.string.source_n, n, name)
         override fun qualityFixed() = getString(R.string.quality_fixed)
+        override fun audioFollow() = getString(R.string.audio_follow)
         override fun quality(q: StreamQuality) = getString(when (q) {
             StreamQuality.HD -> R.string.quality_hd
             StreamQuality.QHD -> R.string.quality_qhd
@@ -80,6 +81,12 @@ class SettingsActivity : Activity() {
             val all = StreamQuality.values()
             settings.quality = all[(all.indexOf(settings.quality) + 1) % all.size]
             build()
+        }
+        SettingsRows.audioRow(settings, labels)?.let { r ->
+            row(getString(R.string.set_audio_source), r.value) {
+                settings.audioPin = SettingsRows.nextAudioPin(settings.audioPin, settings.slotCount)
+                build()
+            }
         }
         row(getString(R.string.set_display), when (settings.displayMode) {
             DisplayMode.STRETCH -> getString(R.string.mode_stretch)

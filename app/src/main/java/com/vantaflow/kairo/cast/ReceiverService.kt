@@ -105,6 +105,7 @@ class ReceiverService : Service() {
         val pol = policy ?: SlotPolicy(count, settings.quality).also { policy = it }
         pol.configure(count, settings.quality)
         val names = settings.slotNames
+        audio.setPinned(settings.audioPin)
         if (sup.slots.isEmpty()) SlotsState.reset(count, names)
         else for (slot in (0 until count)) if (slot !in sup.slots) SlotsState.update(SlotState(slot, names[slot], SlotPhase.STOPPED))
         val before = sup.slots

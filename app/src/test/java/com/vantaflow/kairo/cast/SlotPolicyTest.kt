@@ -125,4 +125,10 @@ class SlotPolicyTest {
         const val BOX_MAX_BLOCKS = 34_560
         const val BOX_MAX_BLOCKS_PER_SECOND = 1_036_800
     }
+
+    @Test fun threeSourcesAnnounce1280x800AndFit() {
+        val p = policy(3)
+        assertEquals(AnnouncedMode(1280, 800, 30), p.announced())
+        for (i in 0..2) assertEquals(Admission.Accepted, p.admit(i, 1280, 800))
+    }
 }

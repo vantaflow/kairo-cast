@@ -187,19 +187,53 @@ class MirrorActivity : Activity() {
         Log.i(TAG, "mode d'affichage : $next")
     }
 
+    private fun pinAudio() {
+        val slot = zoomed ?: focused.takeIf { it >= 0 } ?: return
+        val pin = if (settings.audioPin == slot) null else slot
+        settings.audioPin = pin
+        MirrorAudio.selector.setPinned(pin)
+        toast?.cancel()
+        val msg = if (pin == null) getString(R.string.audio_toast_follow)
+        else getString(R.string.audio_toast, stateOf(slot)?.name ?: settings.slotName(slot))
+        toast = Toast.makeText(this, msg, Toast.LENGTH_SHORT).also { it.show() }
+        refreshDecor()
+    }
+
+    private fun toggleZoom() {
+        zoomed = if (zoomed == null) focused.takeIf { it >= 0 } else null
+        if (zoomed != null) labels.touch(zoomed!!)
+        relayout()
+    }
+
+    private fun isOk(k: Int) = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER
+
+    // OK avec plusieurs tuiles : appui court = zoom (au relâchement), appui long = son de cette source.
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
+        if (isOk(keyCode) && shown.size >= 2) { pinAudio(); return true }
+        return super.onKeyLongPress(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (isOk(keyCode) && shown.size >= 2) {
+            if (event.isTracking && !event.isCanceled) toggleZoom()
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (isOk(keyCode) && shown.size >= 2) {
+            if (event.repeatCount == 0) event.startTracking()
+            return true
+        }
         when (val a = MirrorKeys.map(keyCode, event.repeatCount, shown.size)) {
             is MirrorKeyAction.MoveFocus -> {
                 if (zoomed == null && focused >= 0 && rects.isNotEmpty()) setFocus(TileLayout.nextFocus(rects, focused, a.dx, a.dy))
                 return true
             }
             MirrorKeyAction.CycleMode -> { cycleMode(); return true }
-            MirrorKeyAction.ToggleZoom -> {
-                zoomed = if (zoomed == null) focused.takeIf { it >= 0 } else null
-                if (zoomed != null) labels.touch(zoomed!!)
-                relayout()
-                return true
-            }
+            MirrorKeyAction.ToggleZoom -> { toggleZoom(); return true }
+            MirrorKeyAction.PinAudio -> { pinAudio(); return true }
             MirrorKeyAction.None -> {}
         }
         return super.onKeyDown(keyCode, event)

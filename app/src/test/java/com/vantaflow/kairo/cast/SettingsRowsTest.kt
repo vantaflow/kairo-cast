@@ -8,6 +8,7 @@ class SettingsRowsTest {
     private val labels = object : SettingsRows.Labels {
         override fun sourceN(n: Int, name: String) = "Source $n : $name"
         override fun qualityFixed() = "fixé"
+        override fun audioFollow() = "suit"
         override fun quality(q: StreamQuality) = "Q-" + q.name
     }
     private class MemStore : KeyValueStore {
@@ -43,8 +44,27 @@ class SettingsRowsTest {
     }
     @Test fun slotCountCycle() {
         assertEquals(2, SettingsRows.nextSlotCount(1))
-        assertEquals(4, SettingsRows.nextSlotCount(2))
+        assertEquals(3, SettingsRows.nextSlotCount(2))
+        assertEquals(4, SettingsRows.nextSlotCount(3))
         assertEquals(1, SettingsRows.nextSlotCount(4))
+    }
+    @Test fun audioPinCycle() {
+        assertEquals(0, SettingsRows.nextAudioPin(null, 3))
+        assertEquals(1, SettingsRows.nextAudioPin(0, 3))
+        assertEquals(null, SettingsRows.nextAudioPin(2, 3))
+        assertEquals(null, SettingsRows.nextAudioPin(3, 3))
+    }
+    @Test fun audioRowOnlyFromTwoSources() {
+        assertNull(SettingsRows.audioRow(settings(1), labels))
+        val s = settings(2)
+        assertEquals("suit", SettingsRows.audioRow(s, labels)!!.value)
+        s.audioPin = 1
+        assertEquals("Source 2 : Kairo 2", SettingsRows.audioRow(s, labels)!!.value)
+    }
+    @Test fun threeSourcesAccepted() { assertEquals(3, settings(3).slotCount) }
+    @Test fun restartWhenPinChanges() {
+        val a = snap(2, listOf("A", "B", "C", "D"))
+        assertTrue(SettingsRows.needsRestart(a, a.copy(audioPin = 1)))
     }
     @Test fun restartWhenCountNameOrQualityChanges() {
         val base = snap(2, listOf("A", "B", "C", "D"))

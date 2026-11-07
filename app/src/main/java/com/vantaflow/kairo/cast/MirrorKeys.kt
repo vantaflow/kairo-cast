@@ -6,6 +6,7 @@ sealed interface MirrorKeyAction {
     data class MoveFocus(val dx: Int, val dy: Int) : MirrorKeyAction
     object CycleMode : MirrorKeyAction
     object ToggleZoom : MirrorKeyAction
+    object PinAudio : MirrorKeyAction
     object None : MirrorKeyAction
 }
 
@@ -21,9 +22,9 @@ object MirrorKeys {
             // OK : une seule source = change de mode d'affichage (comme avant) ; plusieurs = zoom de la tuile.
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER ->
                 if (repeat != 0) MirrorKeyAction.None else if (several) MirrorKeyAction.ToggleZoom else MirrorKeyAction.CycleMode
-            // Menu : plusieurs = zoom ; une seule = mode d'affichage (comportement v1).
+            // Menu : plusieurs = prendre le son de la tuile ; une seule = mode d'affichage (comportement v1).
             KeyEvent.KEYCODE_MENU ->
-                if (repeat != 0) MirrorKeyAction.None else if (several) MirrorKeyAction.ToggleZoom else MirrorKeyAction.CycleMode
+                if (repeat != 0) MirrorKeyAction.None else if (several) MirrorKeyAction.PinAudio else MirrorKeyAction.CycleMode
             else -> MirrorKeyAction.None
         }
     }

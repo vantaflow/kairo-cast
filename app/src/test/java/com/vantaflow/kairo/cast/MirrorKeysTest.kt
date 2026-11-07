@@ -13,8 +13,8 @@ class MirrorKeysTest {
         assertEquals(MirrorKeyAction.CycleMode, MirrorKeys.map(KeyEvent.KEYCODE_ENTER, 0, 1))
     }
 
-    @Test fun menuIsZoomWhenSeveral() =
-        assertEquals(MirrorKeyAction.ToggleZoom, MirrorKeys.map(KeyEvent.KEYCODE_MENU, 0, 2))
+    @Test fun menuPinsAudioWhenSeveral() =
+        assertEquals(MirrorKeyAction.PinAudio, MirrorKeys.map(KeyEvent.KEYCODE_MENU, 0, 2))
 
     @Test fun menuIsCycleWhenSingle() =
         assertEquals(MirrorKeyAction.CycleMode, MirrorKeys.map(KeyEvent.KEYCODE_MENU, 0, 1))

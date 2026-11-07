@@ -77,4 +77,12 @@ class SlotSupervisorTest {
         s2.apply(SlotKeys.of(listOf("a", "b"), q, true))
         assertEquals(listOf("stop0", "start0", "start1"), log)
     }
+
+    @Test fun twoToThreeRestartsBothThenStartsThird() {
+        val s = sup()
+        val q = StreamQuality.QHD
+        s.apply(SlotKeys.of(listOf("a", "b"), q, true)); log.clear()
+        s.apply(SlotKeys.of(listOf("a", "b", "c"), q, true))
+        assertEquals(listOf("stop0", "start0", "stop1", "start1", "start2"), log)
+    }
 }
