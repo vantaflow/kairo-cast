@@ -71,23 +71,21 @@ class MainActivity : Activity() {
         val single = names.size == 1
         names.forEachIndexed { i, name ->
             val st = states.firstOrNull { it.slot == i }
-            box.addView(TextView(this).apply {
-                text = name
-                setTextColor(getColor(R.color.kairo_text))
-                textSize = if (single) 56f else 36f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                gravity = android.view.Gravity.CENTER
-            })
-            if (!single || st?.phase != SlotPhase.WAITING) {
-                box.addView(TextView(this).apply {
-                    text = phaseLabel(st)
-                    setTextColor(getColor(R.color.kairo_muted))
-                    textSize = 20f
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(0, 0, 0, (8 * resources.displayMetrics.density).toInt())
-                })
+            if (single) {
+                box.addView(line(name, 56f, R.color.kairo_text, true))
+                if (st?.phase != SlotPhase.WAITING) box.addView(line(phaseLabel(st), 20f, R.color.kairo_muted, false))
+            } else {
+                box.addView(line("$name  ·  ${phaseLabel(st)}", 28f, R.color.kairo_text, true))
             }
         }
+    }
+
+    private fun line(text: String, size: Float, color: Int, bold: Boolean) = TextView(this).apply {
+        this.text = text
+        setTextColor(getColor(color))
+        textSize = size
+        if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+        gravity = android.view.Gravity.CENTER
     }
 
     private fun render(s: Status) {

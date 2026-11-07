@@ -5,7 +5,7 @@
     android:background="@color/kairo_bg"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="48dp">
+    android:padding="24dp">
 
     <TextView
         android:layout_width="wrap_content"
@@ -35,10 +35,10 @@
         android:id="@+id/instruction"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="36dp"
+        android:layout_marginTop="16dp"
         android:gravity="center"
         android:textColor="@color/kairo_text"
-        android:textSize="26sp" />
+        android:textSize="22sp" />
 
     <TextView
         android:id="@+id/instruction_pc"
@@ -47,20 +47,20 @@
         android:layout_marginTop="12dp"
         android:gravity="center"
         android:textColor="@color/kairo_muted"
-        android:textSize="22sp" />
+        android:textSize="18sp" />
 
     <TextView
         android:id="@+id/status"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="8dp"
         android:textColor="@color/kairo_muted"
         android:textSize="22sp" />
 
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="40dp"
+        android:layout_marginTop="20dp"
         android:orientation="horizontal">
 
         <Button
