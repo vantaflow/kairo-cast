@@ -100,7 +100,8 @@ static int cb_video_set_codec_and_size(void *cls, video_codec_t codec, unsigned 
         LOGE("H.265 refuse (non pris en charge)");
         return -1;
     }
-    if (g_cb.on_video_format) g_cb.on_video_format((int) width_source, (int) height_source);
+    if (g_cb.on_video_format) g_cb.on_video_format((int) width_source, (int) height_source,
+                                           (int) x_offset, (int) y_offset, (int) width, (int) height);
     return 0;
 }
 

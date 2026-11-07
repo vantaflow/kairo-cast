@@ -13,6 +13,8 @@ import android.view.Surface
  */
 class VideoDecoder(val surface: Surface) {
     private val queue = FrameQueue(QUEUE_CAPACITY)
+    private var sps: ByteArray? = null // thread décodeur uniquement
+    private var pps: ByteArray? = null
     private val watcher = SpsWatcher()
 
     @Volatile private var width = 1920
@@ -64,14 +66,14 @@ class VideoDecoder(val surface: Surface) {
                         handle(frame)
                     } catch (e: Exception) {
                         Log.e(TAG, "erreur décodeur, réinitialisation", e)
-                        resetCodec()
+                        recover()
                     }
                 }
                 try {
                     drain()
                 } catch (e: Exception) {
                     Log.e(TAG, "erreur de sortie décodeur, réinitialisation", e)
-                    resetCodec()
+                    recover()
                 }
             }
         } finally {
@@ -79,29 +81,47 @@ class VideoDecoder(val surface: Surface) {
         }
     }
 
+    private fun recover() {
+        resetCodec()
+        if (sps != null && running) {
+            try {
+                configure()
+            } catch (e: Exception) {
+                Log.e(TAG, "reconfiguration impossible", e)
+                resetCodec()
+            }
+        }
+    }
+
     private fun handle(frame: Frame) {
+        H264.extractSps(frame.data, frame.size)?.let { sps = it }
+        H264.extractPps(frame.data, frame.size)?.let { pps = it }
         if (watcher.changed(frame.data, frame.size)) {
             Log.i(TAG, "SPS nouveau ou modifié, configuration du décodeur")
             configure()
+        } else if (codec == null && sps != null) {
+            Log.i(TAG, "reconfiguration du décodeur depuis le SPS/PPS en cache")
+            configure()
         }
-        val c = codec ?: return // en attente d'une image clé avec SPS
+        val c = codec ?: return // pas encore de SPS
+        // Jamais d'image abandonnée faute de tampon : on attend (la chaîne de références doit rester intacte).
         var idx = c.dequeueInputBuffer(INPUT_TIMEOUT_US)
-        var tries = 0
-        while (idx < 0 && running && tries < 20) {
+        while (idx < 0 && running) {
             drain()
             idx = c.dequeueInputBuffer(INPUT_TIMEOUT_US)
-            tries++
         }
-        if (idx < 0) {
-            Log.w(TAG, "image abandonnée : pas de tampon d'entrée libre")
-            return
-        }
+        if (idx < 0) return
         val buf = c.getInputBuffer(idx) ?: return
         buf.clear()
         val n = minOf(frame.size, buf.capacity())
+        if (n < frame.size) Log.w(TAG, "image tronquée : ${frame.size} > ${buf.capacity()}")
         buf.put(frame.data, 0, n)
-        c.queueInputBuffer(idx, 0, n, frame.ptsUs, 0)
+        val flags = if (H264.isConfigOnly(frame.data, frame.size)) MediaCodec.BUFFER_FLAG_CODEC_CONFIG else 0
+        c.queueInputBuffer(idx, 0, n, frame.ptsUs, flags)
     }
+
+    private fun startCode(nal: ByteArray): java.nio.ByteBuffer =
+        java.nio.ByteBuffer.wrap(byteArrayOf(0, 0, 0, 1) + nal)
 
     private fun configure() {
         resetCodec()
@@ -119,6 +139,8 @@ class VideoDecoder(val surface: Surface) {
                 format.setInteger(MediaFormat.KEY_PRIORITY, 0)
                 format.setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
             }
+            sps?.let { format.setByteBuffer("csd-0", startCode(it)) }
+            pps?.let { format.setByteBuffer("csd-1", startCode(it)) }
             c.configure(format, surface, null, 0)
             c.start()
             codec = c
@@ -153,21 +175,18 @@ class VideoDecoder(val surface: Surface) {
         }
     }
 
-    /** Libère le codec ; la prochaine image clé (avec SPS) le reconfigurera. */
+    /** Libère le codec ; il sera reconfiguré aussitôt avec le SPS/PPS en cache à la prochaine image. */
     private fun resetCodec() {
         val c = codec ?: return
         codec = null
         try { c.stop() } catch (_: Exception) {}
         try { c.release() } catch (_: Exception) {}
-        // Un SPS identique doit pouvoir reconfigurer : on ne peut pas réinitialiser le watcher,
-        // d'où un décodeur (donc un watcher) neuf par session ; ici on force via la file.
-        queue.clear()
     }
 
     private companion object {
         const val TAG = "KairoCast"
         const val MIME = "video/avc"
-        const val QUEUE_CAPACITY = 30
+        const val QUEUE_CAPACITY = 120
         const val INPUT_TIMEOUT_US = 5_000L
     }
 }

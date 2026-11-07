@@ -18,8 +18,46 @@ object ReceiverState {
     }
 }
 
-/** Relais vers le pipeline d'affichage (Task 7). */
+/**
+ * Relais vers le pipeline d'affichage. Garde la dernière configuration (format, SPS/PPS) et la
+ * dernière image clé pour les rejouer à un nouveau pipeline (réouverture de l'écran de recopie).
+ */
 object MirrorBus {
+    private val lock = Any()
+    private var format: IntArray? = null
+    private var config: Frame? = null
+    private var key: Frame? = null
+
     @Volatile
-    var sink: ReceiverListener? = null
+    private var current: ReceiverListener? = null
+
+    var sink: ReceiverListener?
+        get() = current
+        set(value) {
+            if (value != null) {
+                val (f, c, k) = synchronized(lock) { Triple(format, config, key) }
+                f?.let { value.onVideoFormat(it[0], it[1], it[2], it[3], it[4], it[5]) }
+                c?.let { value.onVideoData(it.data, it.size, it.ptsUs) }
+                k?.let { value.onVideoData(it.data, it.size, it.ptsUs) }
+            }
+            current = value
+        }
+
+    fun remember(width: Int, height: Int, cx: Int, cy: Int, cw: Int, ch: Int) = synchronized(lock) {
+        format = intArrayOf(width, height, cx, cy, cw, ch)
+    }
+
+    fun rememberVideo(data: ByteArray, size: Int, ptsUs: Long) {
+        if (H264.isConfigOnly(data, size)) {
+            synchronized(lock) { config = Frame(data.copyOf(size), size, ptsUs, true) }
+        } else if (H264.hasIdr(data, size)) {
+            synchronized(lock) { key = Frame(data.copyOf(size), size, ptsUs, true) }
+        }
+    }
+
+    fun clearCache() = synchronized(lock) {
+        format = null
+        config = null
+        key = null
+    }
 }

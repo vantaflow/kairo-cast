@@ -36,21 +36,26 @@ class ReceiverService : Service() {
     private val listener = object : ReceiverListener {
         override fun onConnectionOpened() {
             if (!accepting) return
+            MirrorBus.clearCache()
             session.opened()
             MirrorBus.sink?.onConnectionOpened()
         }
         override fun onConnectionClosed() {
             if (!accepting) return
             session.closed()
+            MirrorBus.clearCache()
             MirrorBus.sink?.onConnectionClosed()
             ReceiverState.set(Status.Waiting)
         }
-        override fun onVideoFormat(width: Int, height: Int) {
+        override fun onVideoFormat(width: Int, height: Int, contentX: Int, contentY: Int, contentW: Int, contentH: Int) {
             if (!accepting) return
+            Log.i(TAG, "onVideoFormat flux ${width}x$height contenu x=$contentX y=$contentY ${contentW}x$contentH")
             ReceiverState.set(Status.Mirroring(width, height))
-            MirrorBus.sink?.onVideoFormat(width, height)
+            MirrorBus.remember(width, height, contentX, contentY, contentW, contentH)
+            MirrorBus.sink?.onVideoFormat(width, height, contentX, contentY, contentW, contentH)
         }
         override fun onVideoData(data: ByteArray, size: Int, ptsUs: Long) {
+            MirrorBus.rememberVideo(data, size, ptsUs)
             MirrorBus.sink?.onVideoData(data, size, ptsUs)
         }
         override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long) {
@@ -60,6 +65,7 @@ class ReceiverService : Service() {
             MirrorBus.sink?.onAudioVolume(volumeDb)
         }
         override fun onVideoReset() {
+            MirrorBus.clearCache()
             MirrorBus.sink?.onVideoReset()
         }
     }

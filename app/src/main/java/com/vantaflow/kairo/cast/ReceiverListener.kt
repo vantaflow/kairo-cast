@@ -4,7 +4,8 @@ package com.vantaflow.kairo.cast
 interface ReceiverListener {
     fun onConnectionOpened()
     fun onConnectionClosed()
-    fun onVideoFormat(width: Int, height: Int)
+    /** Taille du flux (width x height) et rectangle utile (contentX/Y/W/H) dans l'image. */
+    fun onVideoFormat(width: Int, height: Int, contentX: Int, contentY: Int, contentW: Int, contentH: Int)
     fun onVideoData(data: ByteArray, size: Int, ptsUs: Long)
     fun onAudioData(data: ByteArray, size: Int, ptsUs: Long)
     fun onAudioVolume(volumeDb: Float)

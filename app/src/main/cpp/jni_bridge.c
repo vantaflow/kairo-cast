@@ -117,13 +117,14 @@ static void cb_opened(void) { call_void(m_opened); }
 static void cb_closed(void) { call_void(m_closed); }
 static void cb_reset(void) { call_void(m_reset); }
 
-static void cb_format(int w, int h)
+static void cb_format(int w, int h, int cx, int cy, int cw, int ch)
 {
     thread_ctx_t *ctx = NULL;
     JNIEnv *env = get_env(&ctx);
     jobject l = listener_ref();
     if (!env || !l) return;
-    (*env)->CallVoidMethod(env, l, m_format, (jint) w, (jint) h);
+    (*env)->CallVoidMethod(env, l, m_format, (jint) w, (jint) h,
+                           (jint) cx, (jint) cy, (jint) cw, (jint) ch);
     check_exception(env);
 }
 
@@ -171,7 +172,7 @@ Java_com_vantaflow_kairo_cast_NativeReceiver_nativeStart(JNIEnv *env, jobject th
     jclass cls = (*env)->GetObjectClass(env, listener);
     m_opened = (*env)->GetMethodID(env, cls, "onConnectionOpened", "()V");
     m_closed = (*env)->GetMethodID(env, cls, "onConnectionClosed", "()V");
-    m_format = (*env)->GetMethodID(env, cls, "onVideoFormat", "(II)V");
+    m_format = (*env)->GetMethodID(env, cls, "onVideoFormat", "(IIIIII)V");
     m_video = (*env)->GetMethodID(env, cls, "onVideoData", "([BIJ)V");
     m_audio = (*env)->GetMethodID(env, cls, "onAudioData", "([BIJ)V");
     m_volume = (*env)->GetMethodID(env, cls, "onAudioVolume", "(F)V");

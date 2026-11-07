@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.os.Build
 import android.os.Bundle
@@ -23,6 +24,7 @@ class MirrorActivity : Activity() {
     private var surface: Surface? = null
     private var videoW = 0
     private var videoH = 0
+    private var content = IntArray(4)
 
     private val closeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -49,7 +51,7 @@ class MirrorActivity : Activity() {
                 val s = Surface(st)
                 surface = s
                 val size = if (videoW > 0 && videoH > 0) videoW to videoH else null
-                val p = MirrorPipeline(s, size) { fw, fh -> runOnUiThread { onFormat(fw, fh) } }
+                val p = MirrorPipeline(s, size) { fw, fh, cx, cy, cw, ch -> runOnUiThread { onFormat(fw, fh, cx, cy, cw, ch) } }
                 pipeline = p
                 MirrorBus.sink = p
                 Log.i(TAG, "surface prête ${w}x$h, pipeline branché")
@@ -86,20 +88,19 @@ class MirrorActivity : Activity() {
         surface = null
     }
 
-    private fun onFormat(w: Int, h: Int) {
+    private fun onFormat(w: Int, h: Int, cx: Int, cy: Int, cw: Int, ch: Int) {
         videoW = w
         videoH = h
+        content = intArrayOf(cx, cy, cw, ch)
         applyTransform()
     }
 
     private fun applyTransform() {
-        val vw = texture.width
-        val vh = texture.height
-        val s = DisplayTransform.scale(videoW, videoH, vw, vh, settings.displayMode)
-        texture.pivotX = vw / 2f
-        texture.pivotY = vh / 2f
-        texture.scaleX = s.x
-        texture.scaleY = s.y
+        val v = DisplayTransform.matrixValues(
+            videoW, videoH, content[0], content[1], content[2], content[3],
+            texture.width, texture.height, settings.displayMode,
+        )
+        texture.setTransform(Matrix().apply { setValues(v) })
     }
 
     private fun cycleMode() {

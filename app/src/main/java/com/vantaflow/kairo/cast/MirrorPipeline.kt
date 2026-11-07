@@ -7,7 +7,7 @@ import android.view.Surface
 class MirrorPipeline(
     surface: Surface,
     initialSize: Pair<Int, Int>?,
-    private val onFormat: (Int, Int) -> Unit,
+    private val onFormat: (Int, Int, Int, Int, Int, Int) -> Unit,
 ) : ReceiverListener {
     @Volatile private var decoder: VideoDecoder? = VideoDecoder(surface).also { d ->
         initialSize?.let { d.setVideoSize(it.first, it.second) }
@@ -28,10 +28,10 @@ class MirrorPipeline(
         Log.i(TAG, "connexion fermée (pipeline)")
     }
 
-    override fun onVideoFormat(width: Int, height: Int) {
-        Log.i(TAG, "onVideoFormat ${width}x$height")
+    override fun onVideoFormat(width: Int, height: Int, contentX: Int, contentY: Int, contentW: Int, contentH: Int) {
+        Log.i(TAG, "onVideoFormat flux ${width}x$height contenu x=$contentX y=$contentY ${contentW}x$contentH")
         decoder?.setVideoSize(width, height)
-        onFormat(width, height)
+        onFormat(width, height, contentX, contentY, contentW, contentH)
     }
 
     override fun onVideoData(data: ByteArray, size: Int, ptsUs: Long) {

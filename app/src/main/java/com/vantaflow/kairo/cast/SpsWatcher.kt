@@ -36,6 +36,42 @@ object H264 {
         return key
     }
 
+    /** Premier NAL du type donné (octet d'en-tête inclus, sans start code), ou null. */
+    fun extractNal(data: ByteArray, size: Int, type: Int): ByteArray? {
+        var nal: ByteArray? = null
+        forEachNal(data, size) { s, e ->
+            if ((data[s].toInt() and 0x1F) == type) {
+                nal = data.copyOfRange(s, e)
+                true
+            } else false
+        }
+        return nal
+    }
+
+    fun extractPps(data: ByteArray, size: Int): ByteArray? = extractNal(data, size, 8)
+
+    /** Vrai si le lot ne contient que des SPS/PPS (au moins un). */
+    fun isConfigOnly(data: ByteArray, size: Int): Boolean {
+        var any = false
+        var other = false
+        forEachNal(data, size) { s, _ ->
+            val t = data[s].toInt() and 0x1F
+            if (t == 7 || t == 8) any = true else other = true
+            other
+        }
+        return any && !other
+    }
+
+    /** Vrai si le lot contient une image IDR (NAL de type 5). */
+    fun hasIdr(data: ByteArray, size: Int): Boolean {
+        var idr = false
+        forEachNal(data, size) { s, _ ->
+            idr = (data[s].toInt() and 0x1F) == 5
+            idr
+        }
+        return idr
+    }
+
     /** NAL SPS (octet d'en-tête inclus, sans start code), ou null. */
     fun extractSps(data: ByteArray, size: Int): ByteArray? {
         var sps: ByteArray? = null
