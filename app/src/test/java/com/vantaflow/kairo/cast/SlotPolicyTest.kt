@@ -16,7 +16,7 @@ class SlotPolicyTest {
         assertEquals(AnnouncedMode(1920, 1200, 30), policy(2, StreamQuality.HD).announced())
         assertEquals(AnnouncedMode(1280, 800, 30), policy(4, StreamQuality.QHD).announced())
         assertEquals(AnnouncedMode(1280, 800, 30), policy(3, StreamQuality.QHD).announced())
-        assertEquals(AnnouncedMode(3840, 2400, 30), policy(1, StreamQuality.UHD).announced())
+        assertEquals(AnnouncedMode(3456, 2160, 30), policy(1, StreamQuality.UHD).announced())
     }
 
     @Test fun budgetMath() {
@@ -109,5 +109,20 @@ class SlotPolicyTest {
 
     @Test fun messageIsExact() {
         assertEquals("Trop de sources pour cette box", SlotPolicy.MESSAGE_SATURATED)
+    }
+
+    @Test fun announcedSizesRespectBoxDecoderLimits() {
+        val modes = StreamQuality.values().flatMap { q -> (1..4).map { policy(it, q).announced() } }.distinct()
+        for (m in modes) {
+            val blocks = ((m.width + 15) / 16) * ((m.height + 15) / 16)
+            assertTrue("$m blocs", blocks <= BOX_MAX_BLOCKS)
+            assertTrue("$m blocs/s", blocks * 30 <= BOX_MAX_BLOCKS_PER_SECOND)
+        }
+    }
+
+    private companion object {
+        // Limites de c2.amlogic.avc.decoder sur la box de test (media_codecs.xml).
+        const val BOX_MAX_BLOCKS = 34_560
+        const val BOX_MAX_BLOCKS_PER_SECOND = 1_036_800
     }
 }

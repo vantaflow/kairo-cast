@@ -18,7 +18,7 @@ class PrefsStore(ctx: Context) : KeyValueStore {
 }
 
 /** Résolution annoncée au Mac (plus haute = image plus nette). */
-enum class StreamQuality(val width: Int, val height: Int) { HD(1920, 1200), QHD(2560, 1600), UHD(3840, 2400) }
+enum class StreamQuality(val width: Int, val height: Int) { HD(1920, 1200), QHD(2560, 1600), UHD(3456, 2160) }
 
 sealed interface NameResult {
     object Ok : NameResult
