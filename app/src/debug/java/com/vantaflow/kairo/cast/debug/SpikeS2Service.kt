@@ -38,6 +38,15 @@ class SpikeS2Service : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val refuse1 = intent?.getBooleanExtra("refuse1", false) ?: false
+        val op = intent?.getStringExtra("op")
+        if (op != null) {
+            val slot = intent.getIntExtra("slot", 1)
+            Thread {
+                if (op == "stop") stopSlot(slot)
+                else startSlot(slot, CastSettings(PrefsStore(this)), refuse1 && slot == 1)
+            }.start()
+            return START_NOT_STICKY
+        }
         Thread {
             val settings = CastSettings(PrefsStore(this))
             for (slot in 0..1) startSlot(slot, settings, refuse1 && slot == 1)
@@ -82,6 +91,13 @@ class SpikeS2Service : Service() {
         } catch (e: Throwable) {
             Log.e(T, "[$slot] échec : $e")
         }
+    }
+
+    private fun stopSlot(slot: Int) {
+        val t0 = System.nanoTime()
+        advs.remove(slot)?.unregister()
+        try { NativeReceiver.stop(slot) } catch (e: Throwable) { Log.e(T, "[$slot] arrêt : $e") }
+        Log.i(T, "[$slot] arrêté en ${(System.nanoTime() - t0) / 1_000_000} ms")
     }
 
     override fun onDestroy() {
