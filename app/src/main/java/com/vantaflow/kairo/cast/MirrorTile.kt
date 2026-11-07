@@ -26,7 +26,6 @@ class MirrorTile(context: Context, val slot: Int) : FrameLayout(context) {
     private var videoH = 0
     private var content = IntArray(4)
     private var mode = DisplayMode.FIT
-    private var labelShown = false
 
     /** Appelé (thread principal) quand le format de la source change. */
     var onFormatChanged: () -> Unit = {}
@@ -138,12 +137,8 @@ class MirrorTile(context: Context, val slot: Int) : FrameLayout(context) {
 
     fun setName(name: String) { if (label.text.toString() != name) label.text = name }
 
-    /** Étiquette visible (fondu) ou masquée. */
-    fun showLabel(visible: Boolean) {
-        if (visible == labelShown) return
-        labelShown = visible
-        label.animate().alpha(if (visible) 1f else 0f).setDuration(400).start()
-    }
+    /** Opacité de l'étiquette (0 = masquée) ; le fondu est calculé par [TileLabelTimer.alpha]. */
+    fun setLabelAlpha(a: Float) { if (label.alpha != a) label.alpha = a }
 
     fun setFocusedOutline(on: Boolean) { outline.visibility = if (on) View.VISIBLE else View.GONE }
 

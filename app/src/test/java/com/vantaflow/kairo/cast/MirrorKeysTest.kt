@@ -43,4 +43,13 @@ class MirrorKeysTest {
         timer.touch(0); timer.forget(0)
         assertFalse(timer.visible(0))
     }
+
+    @Test fun labelFadesOutBeforeEnd() {
+        var t = 0L
+        val timer = TileLabelTimer(4000, 500) { t }
+        timer.touch(1)
+        t = 3000; assertEquals(1f, timer.alpha(1), 0.001f)
+        t = 3750; assertEquals(0.5f, timer.alpha(1), 0.001f)
+        t = 4000; assertEquals(0f, timer.alpha(1), 0.001f)
+    }
 }

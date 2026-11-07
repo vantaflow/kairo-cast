@@ -100,6 +100,7 @@ class MirrorActivity : Activity() {
         for ((slot, tile) in tiles) {
             if (slot !in mirroring) {
                 tile.unbind()
+                tile.alpha = 1f
                 tile.visibility = View.GONE
             } else {
                 tile.setName(slots.first { it.slot == slot }.name)
@@ -130,15 +131,18 @@ class MirrorActivity : Activity() {
         if (w <= 0 || h <= 0 || shown.isEmpty()) return
         val single = shown.size == 1
         val z = zoomed
-        rects = TileLayout.compute(shown.associateWith { ratioOf(it) }, w, h, z)
+        // Mosaïque normale (sans zoom) : le focus se déplace sur ces positions.
+        rects = TileLayout.compute(shown.associateWith { ratioOf(it) }, w, h, null)
+        z?.let { tiles[it]?.bringToFront() }
         for (s in shown) {
             val tile = tiles[s] ?: continue
-            val r = if (single || s == z) TileRect(0, 0, w, h) else rects[s]
-            if (r == null) continue
+            tile.visibility = View.VISIBLE
+            // Une tuile masquée par le zoom reste attachée (sa surface vit) mais transparente.
+            tile.alpha = if (z != null && s != z) 0f else 1f
+            val r = if (single || s == z) TileRect(0, 0, w, h) else rects[s] ?: continue
             tile.place(r.left, r.top, r.width, r.height)
             // Source seule ou zoomée : réglage de l'utilisateur ; mosaïque : Ajuster dans la tuile.
             tile.setDisplayMode(if (single || s == z) settings.slotDisplayMode(s) else DisplayMode.FIT)
-            tile.visibility = if (z != null && s != z) View.INVISIBLE else View.VISIBLE
         }
         refreshDecor()
     }
@@ -150,7 +154,7 @@ class MirrorActivity : Activity() {
             val tile = tiles[s] ?: continue
             tile.setFocusedOutline(several && s == focused && zoomed == null)
             tile.setSpeaker(several && s == audio)
-            tile.showLabel(several && labels.visible(s))
+            tile.setLabelAlpha(if (several) labels.alpha(s) else 0f)
         }
     }
 
@@ -233,6 +237,6 @@ class MirrorActivity : Activity() {
     private companion object {
         const val TAG = "KairoCast"
         const val MAX_TILES = 4
-        const val TICK_MS = 200L
+        const val TICK_MS = 100L
     }
 }
