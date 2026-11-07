@@ -7,7 +7,7 @@ sealed interface Admission {
     object Saturated : Admission
 }
 
-/** Résolution annoncée, budget de décodage partagé et saturation par emplacement. */
+/** Résolutions annoncées en 16:10 (le Mac réduit sa propre résolution pour s'adapter),  budget de décodage partagé et saturation par emplacement. */
 class SlotPolicy(
     val slotCount: Int,
     private val quality: StreamQuality,
@@ -18,8 +18,8 @@ class SlotPolicy(
 
     fun announced(): AnnouncedMode = when {
         slotCount <= 1 -> AnnouncedMode(quality.width, quality.height, FPS)
-        slotCount == 2 -> AnnouncedMode(1920, 1080, FPS)
-        else -> AnnouncedMode(1280, 720, FPS)
+        slotCount == 2 -> AnnouncedMode(1920, 1200, FPS)
+        else -> AnnouncedMode(1280, 800, FPS)
     }
 
     fun costOf(width: Int, height: Int): Int = width * height / 256 * 30

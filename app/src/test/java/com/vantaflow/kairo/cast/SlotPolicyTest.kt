@@ -10,11 +10,13 @@ class SlotPolicyTest {
         SlotPolicy(n, q, cap)
 
     @Test fun announcedPerSlotCount() {
-        assertEquals(AnnouncedMode(2560, 1440, 30), policy(1, StreamQuality.QHD).announced())
-        assertEquals(AnnouncedMode(1920, 1080, 30), policy(1, StreamQuality.HD).announced())
-        assertEquals(AnnouncedMode(1920, 1080, 30), policy(2, StreamQuality.UHD).announced())
-        assertEquals(AnnouncedMode(1920, 1080, 30), policy(2, StreamQuality.HD).announced())
-        assertEquals(AnnouncedMode(1280, 720, 30), policy(4, StreamQuality.QHD).announced())
+        assertEquals(AnnouncedMode(2560, 1600, 30), policy(1, StreamQuality.QHD).announced())
+        assertEquals(AnnouncedMode(1920, 1200, 30), policy(1, StreamQuality.HD).announced())
+        assertEquals(AnnouncedMode(1920, 1200, 30), policy(2, StreamQuality.UHD).announced())
+        assertEquals(AnnouncedMode(1920, 1200, 30), policy(2, StreamQuality.HD).announced())
+        assertEquals(AnnouncedMode(1280, 800, 30), policy(4, StreamQuality.QHD).announced())
+        assertEquals(AnnouncedMode(1280, 800, 30), policy(3, StreamQuality.QHD).announced())
+        assertEquals(AnnouncedMode(3840, 2400, 30), policy(1, StreamQuality.UHD).announced())
     }
 
     @Test fun budgetMath() {
@@ -27,6 +29,18 @@ class SlotPolicyTest {
         val p = policy(2)
         assertEquals(Admission.Accepted, p.admit(0, 1920, 1080))
         assertEquals(Admission.Accepted, p.admit(1, 1920, 1080))
+    }
+
+    @Test fun threeAt1920x1200Fit() {
+        val p = policy(3)
+        assertEquals(270_000, p.costOf(1920, 1200))
+        for (i in 0..2) assertEquals(Admission.Accepted, p.admit(i, 1920, 1200))
+    }
+
+    @Test fun fourAt1280x800Fit() {
+        val p = policy(4)
+        assertEquals(120_000, p.costOf(1280, 800))
+        for (i in 0..3) assertEquals(Admission.Accepted, p.admit(i, 1280, 800))
     }
 
     @Test fun fourSevenTwentyFit() {
