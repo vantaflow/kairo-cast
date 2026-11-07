@@ -99,6 +99,8 @@ class MirrorTile(context: Context, val slot: Int) : FrameLayout(context) {
     fun unbind() {
         attached?.detach(formatListener)
         attached = null
+        videoW = 0; videoH = 0
+        content = IntArray(4)
     }
 
     val hasSurface: Boolean get() = surface != null

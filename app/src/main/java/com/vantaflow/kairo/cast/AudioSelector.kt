@@ -14,6 +14,14 @@ class AudioSelector(
     private var pendingSlot: Int? = null
     private var pendingSince = 0L
 
+    /** Nouveau démarrage du service : plus de source, plus de focus en attente. */
+    @Synchronized
+    fun reset() {
+        audioSlot = null
+        active = emptyList()
+        pendingSlot = null
+    }
+
     fun onActiveChanged(active: List<Int>) {
         notify(synchronized(this) {
             this.active = active.distinct().sorted()

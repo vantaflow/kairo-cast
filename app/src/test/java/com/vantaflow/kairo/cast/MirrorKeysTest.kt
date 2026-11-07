@@ -38,8 +38,8 @@ class MirrorKeysTest {
         val timer = TileLabelTimer(4000) { t }
         assertFalse(timer.visible(0))
         timer.touch(0)
-        t = 4999; assertTrue(timer.visible(0))
-        t = 5000; assertFalse(timer.visible(0))
+        t = 5499; assertTrue(timer.visible(0))
+        t = 5500; assertFalse(timer.visible(0))
         timer.touch(0); timer.forget(0)
         assertFalse(timer.visible(0))
     }
@@ -48,8 +48,8 @@ class MirrorKeysTest {
         var t = 0L
         val timer = TileLabelTimer(4000, 500) { t }
         timer.touch(1)
-        t = 3000; assertEquals(1f, timer.alpha(1), 0.001f)
-        t = 3750; assertEquals(0.5f, timer.alpha(1), 0.001f)
-        t = 4000; assertEquals(0f, timer.alpha(1), 0.001f)
+        t = 4000; assertEquals(1f, timer.alpha(1), 0.001f) // 4 s pleinement opaque
+        t = 4250; assertEquals(0.5f, timer.alpha(1), 0.001f)
+        t = 4500; assertEquals(0f, timer.alpha(1), 0.001f)
     }
 }

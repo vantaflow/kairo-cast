@@ -56,7 +56,7 @@ class SlotRegistry<T : Any>(private val release: (T) -> Unit, private val create
 object MirrorBus {
     private var audioEnabled = true
     private var onKey: Array<() -> Unit> = Array(MAX_SLOTS) { {} }
-    private val registry = SlotRegistry<MirrorPipeline>({ it.release() }) { MirrorPipeline(audioEnabled, onKey[it]) }
+    private val registry = SlotRegistry<MirrorPipeline>({ it.release() }) { MirrorPipeline(audioEnabled, onKey[it], audible = MirrorAudio.selector.audioSlot == it) }
 
     fun pipeline(slot: Int): MirrorPipeline? = registry.get(slot)
 

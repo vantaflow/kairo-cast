@@ -73,6 +73,12 @@ class AudioPlayer(private val codecType: Int) {
     }
 
     fun release() {
+        // Coupure immédiate : le tampon de la piste ne doit pas finir de jouer pendant l'arrêt du fil.
+        try {
+            track?.setVolume(0f)
+            track?.pause()
+            track?.flush()
+        } catch (_: Exception) {}
         running = false
         thread?.interrupt()
     }

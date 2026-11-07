@@ -82,7 +82,7 @@ class SlotController(
     @Volatile private var owner = MirrorSource.NONE
     @Volatile private var airplayConnected = false
     @Volatile private var saturated = false
-    @Volatile private var audioMuted = false
+    @Volatile private var audioMuted = true // muet tant que le service n'a pas désigné cet emplacement
     private var ignoredLogged = false
     private var link: LinkEndpoint? = null
     private var unadvertise: (() -> Unit)? = null
@@ -204,6 +204,9 @@ class SlotController(
             // Le décodeur bloqué est jeté ; un nouveau sera créé à la reprise.
             host.pipeline(slot)?.onVideoReset()
         }
+        // Le budget de cet emplacement est rendu : un autre emplacement saturé peut reprendre.
+        val freed = policy.release(slot)
+        if (freed.isNotEmpty()) onFreed(freed)
         if (owner == MirrorSource.LINK) Thread({ link?.closeClient() }, "kairo-link-bye").start()
         changed()
     }

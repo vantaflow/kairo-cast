@@ -264,7 +264,6 @@ class VideoDecoder(
         fun isResourceError(e: Throwable): Boolean {
             if (e is MediaCodec.CodecException) {
                 if (e.errorCode == 1100) return true
-                if (Build.VERSION.SDK_INT >= 23 && e.isTransient) return true
             }
             return false
         }

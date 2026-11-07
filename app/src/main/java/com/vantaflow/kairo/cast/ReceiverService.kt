@@ -23,10 +23,12 @@ class ReceiverService : Service() {
     private var policy: SlotPolicy? = null
     private val audio = MirrorAudio.selector
     private val activeLock = Any()
+    private val audioLock = Any()
     private var lastActive: List<Int> = emptyList()
     @Volatile private var destroyed = false
 
     init {
+        audio.reset()
         // Le focus de l'écran de recopie déplace le son : on applique hors du thread principal.
         audio.listener = {
             try {
@@ -150,10 +152,12 @@ class ReceiverService : Service() {
     }
 
     /** Un seul emplacement est audible : les autres sont coupés (libère leur lecteur audio). */
-    private fun applyAudio() {
+    private fun applyAudio() = synchronized(audioLock) {
         val sel = audio.audioSlot
-        val cs = synchronized(controllers) { controllers.toMap() }
-        cs.forEach { (s, c) -> c.setAudioMuted(s != sel) }
+        val cs = synchronized(controllers) { controllers.toSortedMap() }
+        // D'abord couper les autres, puis rendre audible l'élu : jamais deux sons à la fois.
+        cs.forEach { (s, c) -> if (s != sel) c.setAudioMuted(true) }
+        cs[sel]?.setAudioMuted(false)
     }
 
     private fun refreshUi() {

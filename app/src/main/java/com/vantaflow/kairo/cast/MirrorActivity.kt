@@ -92,7 +92,9 @@ class MirrorActivity : Activity() {
         for (s in mirroring) if (s !in shown) labels.touch(s)
         for (s in shown) if (s !in mirroring) labels.forget(s)
         shown = mirroring
-        if (zoomed != null && zoomed !in mirroring) zoomed = null
+        if (zoomed != null && (zoomed !in mirroring || mirroring.size < 2)) zoomed = null
+        // Passage à plusieurs sources : les étiquettes apparaissent sur toutes les tuiles.
+        if (shown.size < 2 && mirroring.size >= 2) mirroring.forEach { labels.touch(it) }
         if (focused !in mirroring) {
             focused = mirroring.firstOrNull() ?: -1
             if (focused >= 0) labels.touch(focused)
