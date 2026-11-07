@@ -66,6 +66,10 @@ class MainActivity : Activity() {
                 statusView.text = getString(R.string.status_waiting)
                 resume.visibility = View.GONE
             }
+            Status.MacWaiting -> {
+                statusView.text = getString(R.string.status_mac_waiting)
+                resume.visibility = View.GONE
+            }
             Status.Stopped -> {
                 statusView.text = getString(R.string.status_stopped)
                 resume.visibility = View.GONE

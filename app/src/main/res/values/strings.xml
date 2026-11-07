@@ -9,6 +9,7 @@
     <string name="instruction_pc">Sur le PC Windows : Kairo Cast › %1$s (Win+K)</string>
     <string name="status_mirroring">Recopie en cours (%1$d×%2$d)</string>
     <string name="status_waiting">En attente d\'une connexion…</string>
+    <string name="status_mac_waiting">Mac en attente : relancez la recopie depuis le Mac</string>
     <string name="status_stopped">Récepteur arrêté</string>
     <string name="set_name">Nom du récepteur</string>
     <string name="set_quality">Netteté</string>

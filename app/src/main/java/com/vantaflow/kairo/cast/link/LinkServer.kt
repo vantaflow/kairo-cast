@@ -57,7 +57,11 @@ class LinkServer(
             acceptThread = Thread({ acceptLoop(ss) }, "kairo-link-accept").apply { isDaemon = true; start() }
         }
         val period = maxOf(timeoutMs / 3, 50)
-        writer.scheduleAtFixedRate({ current?.send(LinkFrame(LinkType.PING, 0, 0, ByteArray(0))) }, period, period, TimeUnit.MILLISECONDS)
+        try {
+            writer.scheduleAtFixedRate({ current?.send(LinkFrame(LinkType.PING, 0, 0, ByteArray(0))) }, period, period, TimeUnit.MILLISECONDS)
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // arrêté pendant le démarrage : rien à planifier
+        }
         log("Link : serveur à l'écoute sur le port $boundPort")
     }
 

@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 sealed interface Status {
     object Stopped : Status
     object Waiting : Status
+    /** Session Link finie alors que le Mac est resté connecté : il doit relancer la recopie. */
+    object MacWaiting : Status
     data class Mirroring(val width: Int, val height: Int) : Status
 }
 

@@ -36,50 +36,50 @@ class ReceiverService : Service() {
         },
     )
 
-    /** Source de la session de recopie ; « la dernière arrivée l'emporte ». */
-    private enum class Source { NONE, AIRPLAY, LINK }
     private val arb = Any()
-    @Volatile private var owner = Source.NONE
+    @Volatile private var owner = MirrorSource.NONE
     private var linkServer: LinkServer? = null
     private var ignoredLogged = false
+    @Volatile private var airplayConnected = false // connexion native AirPlay ouverte (même ignorée)
 
     /** Image clé demandée par le décodeur ou l'activité : utile seulement pour Link. */
     private fun keyFrameNeeded() {
-        if (owner == Source.LINK) linkServer?.requestKeyFrame()
+        if (owner == MirrorSource.LINK) linkServer?.requestKeyFrame()
     }
 
     /** Prend la main (sous [arb]) ; renvoie la source précédente. */
-    private fun beginSession(src: Source): Source {
+    private fun beginSession(src: MirrorSource): MirrorSource {
         synchronized(arb) {
             val prev = owner
             owner = src
             ignoredLogged = false
             val p = MirrorBus.pipeline
-            if (p == null) {
-                MirrorBus.start(CastSettings(PrefsStore(this)).audioEnabled, ::keyFrameNeeded)
-            } else if (prev != src && prev != Source.NONE) {
-                p.onSourceChanged()
+            when (SessionArbiter.action(prev, src, p != null)) {
+                PipelineAction.START_FRESH ->
+                    MirrorBus.start(CastSettings(PrefsStore(this)).audioEnabled, ::keyFrameNeeded)
+                PipelineAction.SWITCH_SOURCE -> p?.onSourceChanged()
             }
             session.opened()
             return prev
         }
     }
 
-    private fun endSession(src: Source) {
+    private fun endSession(src: MirrorSource) {
         synchronized(arb) {
             if (owner != src) return
-            owner = Source.NONE
+            owner = MirrorSource.NONE
             session.closed()
             MirrorBus.stop()
-            ReceiverState.set(Status.Waiting)
+            // Le Mac est resté connecté mais AirPlay ne permet pas de redemander une image clé.
+            ReceiverState.set(if (src == MirrorSource.LINK && airplayConnected) Status.MacWaiting else Status.Waiting)
         }
     }
 
     /** Vrai si les données AirPlay doivent être traitées ; sinon (Link actif) elles sont ignorées. */
     private fun airplayActive(): Boolean {
         if (!accepting) return false
-        if (owner == Source.AIRPLAY) return true
-        if (owner == Source.LINK && !ignoredLogged) {
+        if (owner == MirrorSource.AIRPLAY) return true
+        if (owner == MirrorSource.LINK && !ignoredLogged) {
             ignoredLogged = true
             Log.i(TAG, "AirPlay : données ignorées tant que Link est actif")
         }
@@ -94,22 +94,25 @@ class ReceiverService : Service() {
     private val listener = object : ReceiverListener {
         override fun onConnectionOpened() {
             if (!accepting) return
-            val prev = beginSession(Source.AIRPLAY)
-            if (prev == Source.LINK) {
+            airplayConnected = true
+            val prev = beginSession(MirrorSource.AIRPLAY)
+            if (prev == MirrorSource.LINK) {
                 Log.i(TAG, "AirPlay arrive : la session Link est fermée")
                 takeOverFromLink()
             }
         }
         override fun onConnectionClosed() {
             if (!accepting) return
-            endSession(Source.AIRPLAY)
+            airplayConnected = false
+            endSession(MirrorSource.AIRPLAY)
+            if (ReceiverState.status.value == Status.MacWaiting) ReceiverState.set(Status.Waiting)
         }
         override fun onVideoFormat(width: Int, height: Int, contentX: Int, contentY: Int, contentW: Int, contentH: Int) {
             if (!accepting) return
             // Un nouveau flux AirPlay est une arrivée, même si une connexion était restée ouverte.
-            if (owner != Source.AIRPLAY) {
-                val prev = beginSession(Source.AIRPLAY)
-                if (prev == Source.LINK) {
+            if (owner != MirrorSource.AIRPLAY) {
+                val prev = beginSession(MirrorSource.AIRPLAY)
+                if (prev == MirrorSource.LINK) {
                     Log.i(TAG, "AirPlay arrive : la session Link est fermée")
                     takeOverFromLink()
                 }
@@ -139,22 +142,22 @@ class ReceiverService : Service() {
     private val linkListener = object : LinkListener {
         override fun onLinkOpened(hello: Hello) {
             if (!accepting) return
-            beginSession(Source.LINK)
+            beginSession(MirrorSource.LINK)
             Log.i(TAG, "Link : session ouverte (${hello.name} ${hello.w}x${hello.h})")
             ReceiverState.set(Status.Mirroring(hello.w, hello.h))
             MirrorBus.pipeline?.onVideoFormat(hello.w, hello.h, 0, 0, hello.w, hello.h)
         }
         override fun onLinkVideo(data: ByteArray, size: Int, ptsUs: Long, key: Boolean) {
-            if (owner != Source.LINK) return
+            if (owner != MirrorSource.LINK) return
             MirrorBus.pipeline?.onVideoData(data, size, ptsUs)
         }
         override fun onLinkAudio(pcm: ByteArray, size: Int, ptsUs: Long) {
-            if (owner != Source.LINK) return
+            if (owner != MirrorSource.LINK) return
             MirrorBus.pipeline?.onPcmAudio(pcm, size, ptsUs)
         }
         override fun onLinkClosed() {
             Log.i(TAG, "Link : session fermée")
-            endSession(Source.LINK)
+            endSession(MirrorSource.LINK)
         }
     }
 
@@ -245,7 +248,8 @@ class ReceiverService : Service() {
         NativeReceiver.stop()
         running = false
         synchronized(arb) {
-            owner = Source.NONE
+            owner = MirrorSource.NONE
+            airplayConnected = false
             session.closed()
             MirrorBus.stop()
         }

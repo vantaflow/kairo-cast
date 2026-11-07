@@ -8,6 +8,8 @@ Récepteur AirPlay de recopie d'écran pour Android TV, compagnon de Kairo. Il p
 2. Sur le Mac : **Centre de contrôle › Recopie de l'écran › Kairo** (ou le nom choisi dans les réglages).
 3. La recopie s'affiche en plein écran sur la TV. Pendant la recopie, la touche **OK** de la télécommande ouvre un petit menu.
 
+**Kairo Link (Windows)** : un seul émetteur à la fois, le dernier arrivé l'emporte. Si une session Windows prend la main pendant que le Mac est connecté, puis se termine, l'image du Mac ne revient pas toute seule (AirPlay ne permet pas de redemander une image) : l'accueil affiche « Mac en attente : relancez la recopie depuis le Mac ».
+
 ### Réglages
 
 - **Nom du récepteur** : nom visible sur le Mac.

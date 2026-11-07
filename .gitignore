@@ -14,3 +14,4 @@ keystore.properties
 *.keystore
 windows/**/bin/
 windows/**/obj/
+__pycache__/
