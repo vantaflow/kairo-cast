@@ -50,4 +50,20 @@ class DisplayTransformTest {
             check(m(1920, 1080, 0, 0, 1920, 1080, 0, 0, mode), 1f, 1f, 0f, 0f)
         }
     }
+
+    @Test fun portraitStretchBehavesLikeFit() {
+        val st = m(664, 1440, 0, 0, 664, 1440, 1920, 1080, DisplayMode.STRETCH)
+        val fit = m(664, 1440, 0, 0, 664, 1440, 1920, 1080, DisplayMode.FIT)
+        assertEquals(fit.toList(), st.toList())
+    }
+
+    @Test fun sixteenTenStillStretches() {
+        val v = m(1728, 1080, 0, 0, 1728, 1080, 1920, 1080, DisplayMode.STRETCH)
+        check(v, 1f, 1f, 0f, 0f)
+        val fit = m(1728, 1080, 0, 0, 1728, 1080, 1920, 1080, DisplayMode.FIT)
+        assertEquals(0.9f, fit[0], 0.001f)
+    }
+
+    @Test fun sixteenNineStretchIsIdentityScale() =
+        check(m(2560, 1440, 0, 0, 2560, 1440, 1920, 1080, DisplayMode.STRETCH), 1f, 1f, 0f, 0f)
 }

@@ -28,7 +28,10 @@ object DisplayTransform {
         val ky = viewH.toFloat() / frameH
         val sx: Float
         val sy: Float
-        when (mode) {
+        val contentRatio = cw.toFloat() / ch / (viewW.toFloat() / viewH)
+        // STRETCH n'étire que si le format du contenu est à moins de 25 % de celui de la vue ; sinon comme FIT.
+        val effective = if (mode == DisplayMode.STRETCH && Math.abs(contentRatio - 1f) > 0.25f) DisplayMode.FIT else mode
+        when (effective) {
             DisplayMode.STRETCH -> {
                 sx = frameW.toFloat() / cw
                 sy = frameH.toFloat() / ch
@@ -36,7 +39,7 @@ object DisplayTransform {
             else -> {
                 val a = viewW.toFloat() / cw
                 val b = viewH.toFloat() / ch
-                val u = if (mode == DisplayMode.FILL) maxOf(a, b) else minOf(a, b)
+                val u = if (effective == DisplayMode.FILL) maxOf(a, b) else minOf(a, b)
                 sx = u / kx
                 sy = u / ky
             }
