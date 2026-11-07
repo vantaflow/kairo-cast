@@ -30,3 +30,25 @@ jobs:
         with:
           name: kairo-cast-release
           path: app/build/outputs/apk/release/*.apk
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: windows/global.json
+      - name: Tests
+        run: dotnet test windows/KairoCast.sln -c Release
+      - name: Publier l'exécutable
+        run: >
+          dotnet publish windows/KairoCast.App -c Release -r win-x64
+          -p:PublishSingleFile=true --self-contained true
+          -p:IncludeNativeLibrariesForSelfExtract=true -o out
+      - name: Renommer l'exécutable
+        shell: bash
+        run: mv out/KairoCast.exe out/KairoCast-windows.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KairoCast-windows
+          path: out/KairoCast-windows.exe

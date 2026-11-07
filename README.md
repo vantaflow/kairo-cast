@@ -46,12 +46,23 @@ JDK 17, SDK Android 34, NDK 27.2.12479018 :
 ./gradlew :app:testDebugUnitTest :app:assembleRelease
 ```
 
+## Windows
+
+Kairo Cast existe aussi pour Windows : une petite appli qui envoie l'écran et le son du PC vers la box. Windows ne sait pas le faire nativement avec Win+K vers un récepteur AirPlay, d'où cette appli.
+
+- **Installation** : télécharger `KairoCast-windows.exe` depuis la release. Il n'est pas signé : SmartScreen affiche un avertissement, cliquer sur « Informations complémentaires › Exécuter quand même ».
+- **Utilisation** : Win+K puis Kairo, ou l'icône près de l'horloge.
+- **Pare-feu** : au premier partage, Windows demande d'autoriser l'appli ; accepter « Réseau privé ».
+- **Prérequis** : Windows 10 1903 ou plus récent, ou Windows 11.
+- **Journal** : `%LOCALAPPDATA%\KairoCast\log.txt`.
+
 ## Licence et crédits
 
 GPL-3.0.
 
 - [UxPlay](https://github.com/FDH2/UxPlay) (GPL-3.0) : serveur AirPlay sur lequel repose le récepteur.
 - [libplist](https://github.com/libimobiledevice/libplist) (LGPL-2.1).
+- [NAudio](https://github.com/naudio/NAudio) (MIT) et [Vortice.Windows](https://github.com/amerkoleci/Vortice.Windows) (MIT) : capture audio et vidéo de l'appli Windows.
 - OpenSSL 1.1.1 (licence OpenSSL/SSLeay), fourni par le paquet prefab `com.android.ndk.thirdparty:openssl` et lié dynamiquement.
 
 GPL-3.0 et OpenSSL 1.1.1 : la licence OpenSSL/SSLeay n'est pas considérée comme compatible avec la GPL, sauf à bénéficier d'une exception pour les bibliothèques du système. Ici, OpenSSL est une bibliothèque externe fournie sous forme de paquet et liée dynamiquement, pas une bibliothèque du système Android ; cette situation est signalée telle quelle, sans exception de licence ajoutée.
