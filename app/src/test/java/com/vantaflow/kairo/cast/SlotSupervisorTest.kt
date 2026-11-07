@@ -65,4 +65,16 @@ class SlotSupervisorTest {
         assertEquals(setOf("stop0", "stop1"), log.toSet())
         assertEquals(emptyList<Int>(), s.slots)
     }
+
+    @Test fun threeToFourKeepsRunningSlotsOneToTwoRestartsSlot0() {
+        val s = sup()
+        val q = StreamQuality.QHD
+        s.apply(SlotKeys.of(listOf("a", "b", "c"), q, true)); log.clear()
+        s.apply(SlotKeys.of(listOf("a", "b", "c", "d"), q, true))
+        assertEquals(listOf("start3"), log)
+        val s2 = sup(); log.clear()
+        s2.apply(SlotKeys.of(listOf("a"), q, true)); log.clear()
+        s2.apply(SlotKeys.of(listOf("a", "b"), q, true))
+        assertEquals(listOf("stop0", "start0", "start1"), log)
+    }
 }

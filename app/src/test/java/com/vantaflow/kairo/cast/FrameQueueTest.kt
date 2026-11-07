@@ -77,4 +77,20 @@ class FrameQueueTest {
         assertEquals(1L, q.poll(10)?.ptsUs)
         assertEquals(2L, q.poll(10)?.ptsUs)
     }
+
+    @Test fun hardCapBoundsQueueBeforeFirstIdr() {
+        val q = FrameQueue(2, 1)
+        for (i in 0L until 50) q.offer(f(i, true))
+        var n = 0
+        while (q.poll(1) != null) n++
+        assertEquals(8, n)
+    }
+
+    @Test fun clearResetsInitialDelivered() {
+        val q = FrameQueue(2, 1)
+        q.offer(f(0, true)); q.poll(1)
+        q.clear()
+        q.offer(f(1, true)); q.offer(f(2, true)); q.offer(f(3, true))
+        assertEquals(1L, q.poll(1)?.ptsUs) // protégé de nouveau : rien n'est jeté
+    }
 }

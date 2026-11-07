@@ -21,11 +21,10 @@ class ReceiverService : Service() {
     private val controllers = HashMap<Int, SlotController>() // worker + lectures sous verrou
     private var supervisor: SlotSupervisor? = null // worker uniquement
     private var policy: SlotPolicy? = null
-    private var policyKey: Pair<Int, StreamQuality>? = null
     private val audio = MirrorAudio.selector
     private val activeLock = Any()
     private var lastActive: List<Int> = emptyList()
-    private var destroyed = false
+    @Volatile private var destroyed = false
 
     init {
         // Le focus de l'écran de recopie déplace le son : on applique hors du thread principal.
@@ -91,23 +90,18 @@ class ReceiverService : Service() {
     }
 
     /** Ce qui impose le redémarrage d'un emplacement : seule sa clé qui change le redémarre. */
-    private fun keysFor(settings: CastSettings): List<Any> {
-        val n = settings.slotCount
-        return (0 until n).map { listOf(settings.slotName(it), n, if (n == 1) settings.quality else null, settings.audioEnabled) }
-    }
+    private fun keysFor(settings: CastSettings): List<Any> =
+        SlotKeys.of(settings.slotNames, settings.quality, settings.audioEnabled)
 
     /** Worker : amène les emplacements en marche à l'état voulu par les réglages (démarrage, changement de nom ou de nombre). */
     private fun reconcile() {
         if (destroyed) return
         val settings = CastSettings(PrefsStore(this))
         val count = settings.slotCount
-        val pk = count to settings.quality
         if (supervisor == null) AudioPlayer.logAvailableDecoders()
         val sup = supervisor ?: SlotSupervisor { slot -> controllerFor(slot, settings) }.also { supervisor = it }
-        if (policy == null || (policyKey?.first != count) || (count == 1 && policyKey != pk)) {
-            policy = SlotPolicy(count, settings.quality)
-            policyKey = pk
-        }
+        val pol = policy ?: SlotPolicy(count, settings.quality).also { policy = it }
+        pol.configure(count, settings.quality)
         val names = settings.slotNames
         if (sup.slots.isEmpty()) SlotsState.reset(count, names)
         else for (slot in (0 until count)) if (slot !in sup.slots) SlotsState.update(SlotState(slot, names[slot], SlotPhase.STOPPED))
@@ -136,11 +130,13 @@ class ReceiverService : Service() {
 
     /** Rappel des contrôleurs (thread quelconque) : ne fait que lire l'état et poster. */
     private fun onSlotChanged() {
-        val next = SlotsState.active.value
+        val next: List<Int>
         val prev: List<Int>
         synchronized(activeLock) {
+            next = SlotsState.active.value
             prev = lastActive
             lastActive = next
+            if (prev != next) audio.onActiveChanged(next)
         }
         if (prev.isEmpty() && next.isNotEmpty()) {
             main.post {
@@ -149,7 +145,6 @@ class ReceiverService : Service() {
         } else if (SlotsState.shouldClose(prev, next)) {
             main.post { sendBroadcast(Intent(ACTION_CLOSE_MIRROR).setPackage(packageName)) }
         }
-        if (prev != next) audio.onActiveChanged(next)
         applyAudio()
         refreshUi()
     }
@@ -179,7 +174,6 @@ class ReceiverService : Service() {
         supervisor?.stopAll()
         supervisor = null
         policy = null
-        policyKey = null
         MirrorBus.stopAll()
         synchronized(controllers) { controllers.clear() }
         SlotsState.reset(0, emptyList())

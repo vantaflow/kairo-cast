@@ -77,7 +77,7 @@ class SlotController(
     private val onFreed: (List<Int>) -> Unit,
 ) : SlotRunner {
     private val arb = Any()
-    private var name = settings.slotName(slot)
+    @Volatile private var name = settings.slotName(slot)
     @Volatile private var accepting = false
     @Volatile private var owner = MirrorSource.NONE
     @Volatile private var airplayConnected = false
@@ -87,8 +87,8 @@ class SlotController(
     private var link: LinkEndpoint? = null
     private var unadvertise: (() -> Unit)? = null
     private var started = false
-    private var width = 0
-    private var height = 0
+    @Volatile private var width = 0
+    @Volatile private var height = 0
 
     private fun setPhase(p: SlotPhase) {
         SlotsState.update(SlotState(slot, name, p, width, height))
@@ -271,6 +271,7 @@ class SlotController(
 
     /** Admission par la politique ; vrai si le flux est accepté. Sous [arb]. */
     private fun admit(w: Int, h: Int): Boolean {
+        if (!accepting) return false // onVideoFormat tardif après stop()
         width = w; height = h
         return when (admissionOutcome(policy.admit(slot, w, h), owner)) {
             SaturationAction.RUN -> { saturated = false; setPhase(SlotPhase.MIRRORING); true }

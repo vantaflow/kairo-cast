@@ -42,3 +42,11 @@ class SlotSupervisor(private val factory: (slot: Int) -> SlotRunner) {
         try { e.runner.stop() } catch (_: Exception) {}
     }
 }
+
+/** Clés de redémarrage : la résolution annoncée ne dépend que de 1 / 2 / ≥3 sources, pas du nombre exact. */
+object SlotKeys {
+    fun of(names: List<String>, quality: StreamQuality, audio: Boolean): List<Any> {
+        val n = names.size
+        return names.map { listOf(it, SlotPolicy.modeBucket(n), if (n == 1) quality else null, audio) }
+    }
+}

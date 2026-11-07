@@ -9,10 +9,20 @@ sealed interface Admission {
 
 /** Résolutions annoncées en 16:10 (le Mac réduit sa propre résolution pour s'adapter),  budget de décodage partagé et saturation par emplacement. */
 class SlotPolicy(
-    val slotCount: Int,
-    private val quality: StreamQuality,
+    slotCount: Int,
+    quality: StreamQuality,
     val budgetCap: Int = DEFAULT_BUDGET,
 ) {
+    @Volatile var slotCount: Int = slotCount
+        private set
+    @Volatile private var quality: StreamQuality = quality
+
+    /** Met à jour nombre et qualité en place : les budgets déjà admis sont conservés. */
+    fun configure(slotCount: Int, quality: StreamQuality) {
+        this.slotCount = slotCount
+        this.quality = quality
+    }
+
     private val admitted = LinkedHashMap<Int, Int>()
     private val saturated = LinkedHashMap<Int, Int>()
 
@@ -60,6 +70,7 @@ class SlotPolicy(
     fun isSaturated(slot: Int): Boolean = slot in saturated
 
     companion object {
+        fun modeBucket(slotCount: Int): Int = if (slotCount <= 1) 1 else if (slotCount == 2) 2 else 3
         const val DEFAULT_BUDGET = 829_440
         const val MESSAGE_SATURATED = "Trop de sources pour cette box"
         private const val FPS = 30

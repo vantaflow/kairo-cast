@@ -38,6 +38,11 @@ class FrameQueue(private val capacity: Int, private val offerWaitMs: Long = 50) 
                     break
                 }
             }
+            // Plafond dur : sans IDR qui arrive, la file ne grossit pas sans limite.
+            if (items.size >= capacity * HARD_CAP_FACTOR) {
+                items.pollFirst()
+                dropped++
+            }
         } else if (items.size >= capacity) {
             val it = items.iterator()
             var removed = false
@@ -70,6 +75,11 @@ class FrameQueue(private val capacity: Int, private val offerWaitMs: Long = 50) 
 
     fun clear() = lock.withLock {
         items.clear()
+        initialDelivered = false
         notFull.signalAll()
+    }
+
+    private companion object {
+        const val HARD_CAP_FACTOR = 4
     }
 }
