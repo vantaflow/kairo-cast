@@ -48,7 +48,9 @@ class DecodeHarnessActivity : Activity() {
         seconds = intent.getIntExtra("seconds", 120)
         vw = intent.getIntExtra("w", 1920)
         vh = intent.getIntExtra("h", 1080)
-        val data = File(getExternalFilesDir(null), intent.getStringExtra("file") ?: "s1.h264").readBytes()
+        val name = intent.getStringExtra("file") ?: "s1.h264"
+        val ext = File(getExternalFilesDir(null), name)
+        val data = (if (ext.exists()) ext else File(filesDir, name)).readBytes() // repli : stockage interne (run-as)
         aus = AnnexB.splitAccessUnits(data).map { data.copyOfRange(it.first, it.last + 1) }
         Log.i(tag, "S1 start n=$n units=${aus.size} ${vw}x$vh seconds=$seconds")
 
