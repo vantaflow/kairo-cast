@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kairo_bg">#0B1220</color>
+    <color name="kairo_blue">#2563EB</color>
+    <color name="kairo_row">#162033</color>
+    <color name="kairo_row_focus">#1E3A8A</color>
+    <color name="kairo_text">#F1F5F9</color>
+    <color name="kairo_muted">#94A3B8</color>
+</resources>

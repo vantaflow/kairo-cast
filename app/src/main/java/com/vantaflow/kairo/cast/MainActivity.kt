@@ -6,43 +6,31 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.view.Gravity
 import android.view.View
 import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.TextView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class MainActivity : Activity() {
-    private val handler = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(Dispatchers.Main.immediate)
+    private var collector: Job? = null
     private lateinit var resume: Button
-    private val refresh = object : Runnable {
-        override fun run() {
-            resume.visibility = if (ReceiverState.status.value is Status.Mirroring) View.VISIBLE else View.GONE
-            handler.postDelayed(this, 1000)
-        }
-    }
+    private lateinit var statusView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        resume = Button(this).apply {
-            text = "Reprendre la recopie"
-            visibility = View.GONE
-            setOnClickListener {
-                startActivity(Intent(this@MainActivity, MirrorActivity::class.java))
-            }
+        setTheme(R.style.KairoTheme)
+        setContentView(R.layout.activity_main)
+        resume = findViewById(R.id.resume)
+        statusView = findViewById(R.id.status)
+        resume.setOnClickListener { startActivity(Intent(this, MirrorActivity::class.java)) }
+        findViewById<Button>(R.id.settings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
-        setContentView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            addView(TextView(this@MainActivity).apply {
-                text = getString(R.string.app_name)
-                textSize = 32f
-                gravity = Gravity.CENTER
-            })
-            addView(resume)
-        })
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -53,11 +41,42 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        handler.post(refresh)
+        val name = CastSettings(PrefsStore(this)).name
+        findViewById<TextView>(R.id.name).text = name
+        findViewById<TextView>(R.id.ip).text = "Adresse IP : " + (NetworkInfo.localIpv4(this) ?: "non connecté")
+        findViewById<TextView>(R.id.instruction).text =
+            "Sur le Mac : Centre de contrôle › Recopie de l'écran › $name"
+        collector = scope.launch {
+            ReceiverState.status.collect { render(it) }
+        }
+        (if (resume.visibility == View.VISIBLE) resume else findViewById<Button>(R.id.settings)).requestFocus()
+    }
+
+    private fun render(s: Status) {
+        when (s) {
+            is Status.Mirroring -> {
+                statusView.text = "Recopie en cours (${s.width}×${s.height})"
+                resume.visibility = View.VISIBLE
+                resume.requestFocus()
+            }
+            Status.Waiting -> {
+                statusView.text = "En attente d'une connexion…"
+                resume.visibility = View.GONE
+            }
+            Status.Stopped -> {
+                statusView.text = "Récepteur arrêté"
+                resume.visibility = View.GONE
+            }
+        }
     }
 
     override fun onPause() {
-        handler.removeCallbacks(refresh)
+        collector?.cancel()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
     }
 }

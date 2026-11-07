@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/kairo_bg"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="48dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Kairo Cast"
+        android:textColor="@color/kairo_blue"
+        android:textSize="28sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textColor="@color/kairo_text"
+        android:textSize="56sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/ip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="@color/kairo_muted"
+        android:textSize="24sp" />
+
+    <TextView
+        android:id="@+id/instruction"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="36dp"
+        android:gravity="center"
+        android:textColor="@color/kairo_text"
+        android:textSize="26sp" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:textColor="@color/kairo_muted"
+        android:textSize="22sp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="40dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/resume"
+            style="@style/KairoButton"
+            android:text="Reprendre la recopie"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/settings"
+            style="@style/KairoButton"
+            android:text="Réglages" />
+    </LinearLayout>
+</LinearLayout>

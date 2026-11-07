@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -24,6 +26,36 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val props = Properties()
+            val f = rootProject.file("keystore.properties")
+            if (f.exists()) {
+                f.inputStream().use { props.load(it) }
+                storeFile = rootProject.file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            } else {
+                // Par défaut : keystore de debug.
+                val dbg = File(System.getProperty("user.home"), ".android/debug.keystore")
+                storeFile = dbg
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // R8 désactivé : le code appelé depuis JNI (NativeReceiver, ReceiverListener) est
+            // référencé par nom depuis le C, et la taille de l'APK n'est pas critique.
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -45,5 +77,6 @@ android {
 dependencies {
     implementation("com.android.ndk.thirdparty:openssl:1.1.1q-beta-1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     testImplementation("junit:junit:4.13.2")
 }

@@ -9,3 +9,6 @@ local.properties
 .DS_Store
 .worktrees/
 .superpowers/
+keystore.properties
+*.jks
+*.keystore
