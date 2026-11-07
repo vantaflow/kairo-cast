@@ -29,7 +29,8 @@ class SlotPolicy(
         admitted.remove(slot)
         saturated.remove(slot)
         val cost = costOf(width, height)
-        return if (admitted.values.sum() + cost <= budgetCap) {
+        // Une source seule est toujours admise à la qualité choisie ; le budget joue dès 2 sources.
+        return if (admitted.isEmpty() || admitted.values.sum() + cost <= budgetCap) {
             admitted[slot] = cost
             Admission.Accepted
         } else {

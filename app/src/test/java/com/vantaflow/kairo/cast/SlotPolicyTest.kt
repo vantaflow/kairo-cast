@@ -87,6 +87,12 @@ class SlotPolicyTest {
         assertEquals(Admission.Saturated, p.admit(2, 1280, 720))
     }
 
+    @Test fun singleUhdSourceIsAlwaysAdmitted() {
+        val p = policy(1, StreamQuality.UHD)
+        assertEquals(Admission.Accepted, p.admit(0, 3840, 2160))
+        assertFalse(p.isSaturated(0))
+    }
+
     @Test fun messageIsExact() {
         assertEquals("Trop de sources pour cette box", SlotPolicy.MESSAGE_SATURATED)
     }
