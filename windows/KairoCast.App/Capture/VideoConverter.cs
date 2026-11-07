@@ -51,12 +51,23 @@ internal sealed class VideoConverter : IDisposable
             Format = Format.NV12,
             SampleDescription = new SampleDescription(1, 0),
             Usage = ResourceUsage.Default,
-            BindFlags = BindFlags.RenderTarget,
+            // Comme l'accélérateur d'encodage MF de Chromium : cible du processeur vidéo et lisible par l'encodeur.
+            BindFlags = BindFlags.RenderTarget | BindFlags.ShaderResource,
             CPUAccessFlags = CpuAccessFlags.None,
             MiscFlags = ResourceOptionFlags.None,
         };
-        for (var i = 0; i < slots; i++) Outputs[i] = gpu.Device.CreateTexture2D(desc);
-        Log.Info($"Convertisseur : {slots} textures NV12 {outW}x{outH} (RenderTarget)");
+        try
+        {
+            for (var i = 0; i < slots; i++) Outputs[i] = gpu.Device.CreateTexture2D(desc);
+        }
+        catch (SharpGenException e)
+        {
+            Log.Warn($"Textures NV12 RenderTarget|ShaderResource refusées ({Log.Hr(e)}), repli sur RenderTarget seul");
+            foreach (var t in Outputs) t?.Dispose();
+            desc.BindFlags = BindFlags.RenderTarget;
+            for (var i = 0; i < slots; i++) Outputs[i] = gpu.Device.CreateTexture2D(desc);
+        }
+        Log.Info($"Convertisseur : {slots} textures NV12 {outW}x{outH} ({desc.BindFlags})");
     }
 
     /// <summary>Convertit <paramref name="src"/> (BGRA, contenu utile <paramref name="contentW"/>×<paramref name="contentH"/>) dans la texture <paramref name="slot"/>.</summary>

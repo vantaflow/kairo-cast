@@ -16,7 +16,8 @@ namespace KairoCast.App.Streaming;
 public sealed class StreamSession : IAsyncDisposable
 {
     public const string AudioFormat = "pcm_s16le_48000_2";
-    private const int SlotCount = 4;
+    // Les MFT matériels asynchrones (QSV, NVENC) gardent 3 à 4 images en vol : 8 textures laissent de la marge.
+    private const int SlotCount = 8;
 
     private readonly StreamOptions _opt;
     private readonly BoxInfo _box;
@@ -250,7 +251,8 @@ public sealed class StreamSession : IAsyncDisposable
         try { if (_link != null) await _link.DisposeAsync(); } catch (Exception e) { Log.Warn($"Arrêt liaison : {Log.Describe(e)}"); }
         try { _conv?.Dispose(); } catch (Exception e) { Log.Warn($"Arrêt convertisseur : {Log.Describe(e)}"); }
         try { _gpu?.Dispose(); } catch (Exception e) { Log.Warn($"Arrêt GPU : {Log.Describe(e)}"); }
-        if (_mfStarted) { try { MediaFactory.MFShutdown(); } catch { } }
+        if (_mfStarted && _encoder?.LeakedTransform != true) { try { MediaFactory.MFShutdown(); } catch { } }
+        else if (_mfStarted) Log.Warn("Session : MFShutdown sauté (MFT laissé en place par l'encodeur)");
         Log.Info("=== Session terminée");
         SetStatus(status ?? "Partage arrêté");
         if (raiseEnded) { try { Ended?.Invoke(cause); } catch (Exception e) { Log.Warn($"Ended : {Log.Describe(e)}"); } }

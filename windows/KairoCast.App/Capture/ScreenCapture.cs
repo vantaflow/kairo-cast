@@ -59,7 +59,8 @@ internal sealed class ScreenCapture : IDisposable
         _pool.FrameArrived += OnFrameArrived;
         _session = _pool.CreateCaptureSession(_item);
 
-        if (ApiInformation.IsPropertyPresent(SessionType, "IsCursorCaptureEnabled"))
+        // 2004 (19041) et plus ; le test de version sert aussi à l'analyseur CA1416.
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041) && ApiInformation.IsPropertyPresent(SessionType, "IsCursorCaptureEnabled"))
         {
             try { _session.IsCursorCaptureEnabled = true; }
             catch (Exception e) { Log.Warn($"IsCursorCaptureEnabled : {Log.Describe(e)}"); }
@@ -135,6 +136,10 @@ internal sealed class ScreenCapture : IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         try { _pool.FrameArrived -= OnFrameArrived; } catch { }
+        // Attend la fin d'une image en cours de traitement (le convertisseur va être libéré juste après).
+        var sw = Stopwatch.StartNew();
+        while (Volatile.Read(ref _busy) == 1 && sw.ElapsedMilliseconds < 1000) Thread.Sleep(1);
+        if (Volatile.Read(ref _busy) == 1) Log.Warn("Capture : une image est encore en cours de traitement après 1 s");
         try { _session.Dispose(); } catch (Exception e) { Log.Warn($"Capture : fermeture de session : {Log.Describe(e)}"); }
         try { _pool.Dispose(); } catch (Exception e) { Log.Warn($"Capture : fermeture du pool : {Log.Describe(e)}"); }
         Log.Info($"Capture arrêtée ({Frames} images reçues, {Interlocked.Read(ref _errors)} erreurs)");

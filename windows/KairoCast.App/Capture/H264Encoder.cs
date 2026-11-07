@@ -58,13 +58,18 @@ internal sealed class H264Encoder : IDisposable
     private long _lastPts = long.MinValue;
     private long _keyRequestedAtUs = -1;
     private int _keyRetries;
-    private bool _warnedAvcc, _warnedNoParamSets, _warnedInFlight;
+    private bool _warnedAvcc, _warnedNoParamSets;
+    private long _inFlightOverSinceUs = -1;
+    private const long InFlightLeakUs = 500_000;
     private bool _firstOutputLogged;
 
     // Statistiques (fil de l'encodeur).
     private long _statIn, _statOut, _statKeys, _statBytes, _statRepeats, _statLatSum, _statLatMax, _statStart;
 
     public string Name { get; private set; } = "?";
+
+    /// <summary>Vrai si le MFT a été volontairement laissé en place (fil bloqué) : ne pas appeler MFShutdown.</summary>
+    public bool LeakedTransform { get; private set; }
     public bool IsHardware { get; private set; }
 
     /// <summary>Erreur fatale de l'encodeur (levée sur le fil de l'encodeur).</summary>
@@ -275,6 +280,17 @@ internal sealed class H264Encoder : IDisposable
         MediaFactory.MFSetAttributeRatio(t, MediaTypeAttributeKeys.FrameRate, (uint)_opt.Fps, 1).CheckError();
         MediaFactory.MFSetAttributeRatio(t, MediaTypeAttributeKeys.PixelAspectRatio, 1, 1).CheckError();
         t.Set(MediaTypeAttributeKeys.InterlaceMode, CodecGuids.InterlaceProgressive).CheckError();
+        // Couleurs BT.709, plage limitée 16-235 : ce que produit le processeur vidéo (signalé dans la VUI si l'encodeur le fait).
+        SetOptional(t, MediaTypeAttributeKeys.YuvMatrix, CodecGuids.YuvMatrixBt709, "MF_MT_YUV_MATRIX");
+        SetOptional(t, MediaTypeAttributeKeys.VideoNominalRange, CodecGuids.NominalRange16To235, "MF_MT_VIDEO_NOMINAL_RANGE");
+        SetOptional(t, MediaTypeAttributeKeys.VideoPrimaries, CodecGuids.PrimariesBt709, "MF_MT_VIDEO_PRIMARIES");
+        SetOptional(t, MediaTypeAttributeKeys.TransferFunction, CodecGuids.TransferFunc709, "MF_MT_TRANSFER_FUNCTION");
+    }
+
+    private static void SetOptional(IMFMediaType t, Guid key, uint value, string name)
+    {
+        var hr = t.Set(key, value);
+        if (hr.Failure) Log.Info($"  {name}={value} non posé (hr=0x{hr.Code:X8})");
     }
 
     private void SetInputType()
@@ -453,6 +469,7 @@ internal sealed class H264Encoder : IDisposable
             if (_async) _needInput--;
             else while (DrainOne()) { }
         }
+        if (IsHardware) CheckInFlightLeak();
         if (Volatile.Read(ref _keyRequested) == 0 && _keyRequestedAtUs >= 0 && _clock.NowUs - _keyRequestedAtUs > 2_000_000)
         {
             _keyRetries++;
@@ -518,12 +535,7 @@ internal sealed class H264Encoder : IDisposable
             {
                 _inFlight.Enqueue((slot, pts));
                 handedToEncoder = true;
-                // Garde-fou : un MFT qui ne rend pas les images bloquerait l'anneau.
-                while (_inFlight.Count > Math.Max(1, _slots.Count - 2))
-                {
-                    if (!_warnedInFlight) { _warnedInFlight = true; Log.Warn($"Encodeur : {_inFlight.Count} images en cours, libération anticipée de la plus ancienne"); }
-                    _slots.Release(_inFlight.Dequeue().slot);
-                }
+                CheckInFlightLeak();
             }
             _statIn++;
             if (repeat) _statRepeats++;
@@ -533,6 +545,27 @@ internal sealed class H264Encoder : IDisposable
             if (!handedToEncoder) _slots.Release(slot);
             sample?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Garde-fou contre une vraie fuite : un MFT qui ne rend plus les images bloquerait l'anneau.
+    /// Les encodeurs matériels gardent normalement 3 à 4 images en vol (le GPU les lit encore) : on ne libère
+    /// par anticipation que si le seuil reste dépassé plus de 500 ms.
+    /// </summary>
+    private void CheckInFlightLeak()
+    {
+        var limit = Math.Max(1, _slots.Count - 2);
+        if (_inFlight.Count <= limit)
+        {
+            _inFlightOverSinceUs = -1;
+            return;
+        }
+        var now = _clock.NowUs;
+        if (_inFlightOverSinceUs < 0) { _inFlightOverSinceUs = now; return; }
+        if (now - _inFlightOverSinceUs < InFlightLeakUs) return;
+        Log.Warn($"Encodeur : {_inFlight.Count} images en vol depuis plus de {InFlightLeakUs / 1000} ms (limite {limit}), libération anticipée de la plus ancienne");
+        while (_inFlight.Count > limit) _slots.Release(_inFlight.Dequeue().slot);
+        _inFlightOverSinceUs = -1;
     }
 
     private IMFSample GpuSample(int slot)
@@ -775,6 +808,7 @@ internal sealed class H264Encoder : IDisposable
         {
             // Ne jamais libérer le MFT sous un fil qui s'en sert encore.
             Log.Error("Encodeur : fil toujours actif, MFT non libéré (fuite volontaire)");
+            LeakedTransform = true;
             return;
         }
         ShutdownTransform();

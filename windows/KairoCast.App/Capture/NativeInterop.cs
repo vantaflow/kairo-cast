@@ -191,4 +191,8 @@ internal static class CodecGuids
     public const uint RateControlCbr = 0;   // eAVEncCommonRateControlMode_CBR
     public const uint ProfileMain = 77;     // eAVEncH264VProfile_Main
     public const uint InterlaceProgressive = 2; // MFVideoInterlace_Progressive
+    public const uint YuvMatrixBt709 = 1;       // MFVideoTransferMatrix_BT709
+    public const uint NominalRange16To235 = 2;  // MFNominalRange_16_235
+    public const uint PrimariesBt709 = 2;       // MFVideoPrimaries_BT709
+    public const uint TransferFunc709 = 5;      // MFVideoTransFunc_709
 }
