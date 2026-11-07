@@ -64,4 +64,44 @@ public class LinkCodecTests
         b[4] = 99;
         await Assert.ThrowsAsync<LinkProtocolException>(() => Read(b));
     }
+
+    private sealed class OneByteStream(byte[] data) : Stream
+    {
+        private int _i;
+        public override int Read(byte[] buffer, int offset, int count) =>
+            _i >= data.Length || count == 0 ? 0 : (buffer[offset] = data[_i++]) * 0 + 1;
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            if (_i >= data.Length || buffer.Length == 0) return new(0);
+            buffer.Span[0] = data[_i++];
+            return new(1);
+        }
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long o, SeekOrigin so) => throw new NotSupportedException();
+        public override void SetLength(long v) => throw new NotSupportedException();
+        public override void Write(byte[] b, int o, int c) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task ByteAtATimeStream()
+    {
+        var b = Vec("audio");
+        var f = await LinkCodec.ReadAsync(new OneByteStream(b), CancellationToken.None);
+        Assert.Equal(b, LinkCodec.Encode(f!));
+    }
+
+    [Fact]
+    public void HelloMissingFieldThrows() =>
+        Assert.Throws<LinkProtocolException>(() =>
+            Hello.Parse("{\"v\":1,\"w\":1,\"h\":1,\"fps\":30,\"audio\":\"x\"}"u8));
+
+    [Fact]
+    public void EncodeOversizeThrows() =>
+        Assert.Throws<LinkProtocolException>(() =>
+            LinkCodec.Encode(new LinkFrame(LinkType.Video, 0, 0, new byte[LinkCodec.MaxPayload + 1])));
 }

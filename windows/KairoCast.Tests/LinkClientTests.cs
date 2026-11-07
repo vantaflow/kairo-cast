@@ -97,4 +97,78 @@ public class LinkClientTests
         await got.Task.WaitAsync(TimeSpan.FromSeconds(3));
         l.Stop();
     }
+
+    [Fact]
+    public async Task HandlerAwaitingDisposeDoesNotDeadlock()
+    {
+        var (l, ep) = Listen();
+        var c = new LinkClient(TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(2));
+        var done = new TaskCompletionSource();
+        c.KeyFrameRequested += () => { c.DisposeAsync().AsTask().Wait(); done.TrySetResult(); };
+        var accept = l.AcceptTcpClientAsync();
+        await c.ConnectAsync(ep, H, CancellationToken.None);
+        using var srv = await accept;
+        await srv.GetStream().WriteAsync(LinkCodec.Encode(new LinkFrame(LinkType.KeyReq, 0, 0, Array.Empty<byte>())));
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        l.Stop();
+    }
+
+    [Fact]
+    public async Task ThrowingHandlerDoesNotKillLink()
+    {
+        var (l, ep) = Listen();
+        await using var c = new LinkClient(TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(2));
+        var count = 0;
+        var second = new TaskCompletionSource();
+        c.KeyFrameRequested += () => { if (Interlocked.Increment(ref count) == 1) throw new Exception("boom"); second.TrySetResult(); };
+        var accept = l.AcceptTcpClientAsync();
+        await c.ConnectAsync(ep, H, CancellationToken.None);
+        using var srv = await accept;
+        var req = LinkCodec.Encode(new LinkFrame(LinkType.KeyReq, 0, 0, Array.Empty<byte>()));
+        await srv.GetStream().WriteAsync(req);
+        await srv.GetStream().WriteAsync(req);
+        await second.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        l.Stop();
+    }
+
+    [Fact]
+    public async Task SecondConnectIsRejected()
+    {
+        var (l, ep) = Listen();
+        await using var c = new LinkClient();
+        await c.ConnectAsync(ep, H, CancellationToken.None);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => c.ConnectAsync(ep, H, CancellationToken.None));
+        l.Stop();
+    }
+
+    [Fact]
+    public async Task ConnectFailureThrowsAndDisposeIsSafe()
+    {
+        var (l, ep) = Listen();
+        l.Stop();
+        var c = new LinkClient();
+        await Assert.ThrowsAnyAsync<Exception>(() => c.ConnectAsync(ep, H, CancellationToken.None));
+        await c.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
+    public async Task DisposeWithStalledWriteDoesNotHang()
+    {
+        var (l, ep) = Listen();
+        var c = new LinkClient(TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+        var accept = l.AcceptTcpClientAsync();
+        await c.ConnectAsync(ep, H, CancellationToken.None);
+        using var srv = await accept; // le serveur ne lit jamais
+        var big = new byte[LinkCodec.MaxPayload];
+        using var stop = new CancellationTokenSource();
+        var pump = Task.Run(async () =>
+        {
+            try { while (!stop.IsCancellationRequested) await c.SendVideoAsync(big, false, 0); } catch { }
+        });
+        await Task.Delay(500); // les tampons TCP sont pleins, une ecriture est bloquee
+        await c.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        stop.Cancel();
+        await pump.WaitAsync(TimeSpan.FromSeconds(5));
+        l.Stop();
+    }
 }

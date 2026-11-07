@@ -8,15 +8,18 @@ public static class LinkCodec
     public const int MaxPayload = 8 << 20;
     private static readonly byte[] Magic = "KCST"u8.ToArray();
 
-    public static byte[] Encode(LinkFrame f)
+    public static byte[] Encode(LinkFrame f) => Encode(f.Type, f.Flags, f.PtsUs, f.Payload);
+
+    public static byte[] Encode(LinkType type, int flags, long ptsUs, ReadOnlySpan<byte> payload)
     {
-        var b = new byte[HeaderSize + f.Payload.Length];
+        if (payload.Length > MaxPayload) throw new LinkProtocolException($"charge trop grande {payload.Length}");
+        var b = new byte[HeaderSize + payload.Length];
         Magic.CopyTo(b, 0);
-        b[4] = (byte)f.Type;
-        b[5] = (byte)f.Flags;
-        BinaryPrimitives.WriteInt64BigEndian(b.AsSpan(8), f.PtsUs);
-        BinaryPrimitives.WriteUInt32BigEndian(b.AsSpan(16), (uint)f.Payload.Length);
-        f.Payload.CopyTo(b, HeaderSize);
+        b[4] = (byte)type;
+        b[5] = (byte)flags;
+        BinaryPrimitives.WriteInt64BigEndian(b.AsSpan(8), ptsUs);
+        BinaryPrimitives.WriteUInt32BigEndian(b.AsSpan(16), (uint)payload.Length);
+        payload.CopyTo(b.AsSpan(HeaderSize));
         return b;
     }
 

@@ -4,12 +4,12 @@ using System.Text.Json.Serialization;
 namespace KairoCast.Link;
 
 public sealed record Hello(
-    [property: JsonPropertyName("v")] int V,
-    [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("w")] int W,
-    [property: JsonPropertyName("h")] int H,
-    [property: JsonPropertyName("fps")] int Fps,
-    [property: JsonPropertyName("audio")] string Audio)
+    [property: JsonRequired, JsonPropertyName("v")] int V,
+    [property: JsonRequired, JsonPropertyName("name")] string Name,
+    [property: JsonRequired, JsonPropertyName("w")] int W,
+    [property: JsonRequired, JsonPropertyName("h")] int H,
+    [property: JsonRequired, JsonPropertyName("fps")] int Fps,
+    [property: JsonRequired, JsonPropertyName("audio")] string Audio)
 {
     public byte[] ToBytes() => JsonSerializer.SerializeToUtf8Bytes(this);
 
@@ -17,7 +17,9 @@ public sealed record Hello(
     {
         try
         {
-            return JsonSerializer.Deserialize<Hello>(bytes) ?? throw new LinkProtocolException("HELLO vide");
+            var h = JsonSerializer.Deserialize<Hello>(bytes) ?? throw new LinkProtocolException("HELLO vide");
+            if (h.Name == null || h.Audio == null) throw new LinkProtocolException("HELLO incomplet");
+            return h;
         }
         catch (JsonException e)
         {

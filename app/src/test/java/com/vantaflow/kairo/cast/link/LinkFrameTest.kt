@@ -73,4 +73,36 @@ class LinkFrameTest {
         } catch (e: LinkProtocolException) {
         }
     }
+
+    @Test fun byteAtATimeStream() {
+        val b = vec("audio.bin")
+        val one = object : java.io.InputStream() {
+            var i = 0
+            override fun read() = if (i < b.size) b[i++].toInt() and 0xFF else -1
+            override fun read(buf: ByteArray, off: Int, len: Int): Int {
+                if (len == 0) return 0
+                val c = read()
+                if (c < 0) return -1
+                buf[off] = c.toByte()
+                return 1
+            }
+        }
+        assertArrayEquals(b, LinkCodec.encode(LinkCodec.read(one)!!))
+    }
+
+    @Test fun helloMissingFieldThrows() {
+        try {
+            Hello.parse("""{"v":1,"w":1,"h":1,"fps":30,"audio":"x"}""".toByteArray())
+            fail()
+        } catch (e: LinkProtocolException) {
+        }
+    }
+
+    @Test fun encodeOversizeThrows() {
+        try {
+            LinkCodec.encode(LinkFrame(LinkType.VIDEO, 0, 0, ByteArray(LinkCodec.MAX_PAYLOAD + 1)))
+            fail()
+        } catch (e: LinkProtocolException) {
+        }
+    }
 }

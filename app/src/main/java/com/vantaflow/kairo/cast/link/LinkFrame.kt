@@ -25,6 +25,7 @@ object LinkCodec {
     private val MAGIC = byteArrayOf('K'.code.toByte(), 'C'.code.toByte(), 'S'.code.toByte(), 'T'.code.toByte())
 
     fun encode(f: LinkFrame): ByteArray {
+        if (f.payload.size > MAX_PAYLOAD) throw LinkProtocolException("charge trop grande ${f.payload.size}")
         val b = ByteBuffer.allocate(HEADER + f.payload.size)
         b.put(MAGIC).put(f.type.code.toByte()).put(f.flags.toByte()).putShort(0)
         b.putLong(f.ptsUs).putInt(f.payload.size).put(f.payload)
