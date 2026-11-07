@@ -81,6 +81,15 @@ class CastSettingsSlotsTest {
         assertEquals(NameResult.Duplicate, s.setSlotName(2, ""))
     }
 
+    @Test fun legacyNameSetterRefusesDuplicate() {
+        val s = settings()
+        s.setSlotName(1, "Bureau")
+        s.name = "bureau"
+        assertEquals("Kairo", s.name)
+        s.name = "Salon"
+        assertEquals("Salon", s.name)
+    }
+
     @Test fun invalidSlotCountFallsBack() {
         val store = FakeStore()
         store.map["slot_count"] = "3"

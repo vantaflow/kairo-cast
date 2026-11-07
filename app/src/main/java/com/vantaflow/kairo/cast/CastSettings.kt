@@ -31,7 +31,7 @@ class CastSettings(
 ) {
     var name: String
         get() = slotName(0)
-        set(value) = store.putString(SlotIdentity.nameKey(0), ReceiverName.normalize(value))
+        set(value) { setSlotName(0, value) }
 
     var displayMode: DisplayMode
         get() = slotDisplayMode(0)
