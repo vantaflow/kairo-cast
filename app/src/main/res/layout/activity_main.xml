@@ -58,12 +58,12 @@
         <Button
             android:id="@+id/resume"
             style="@style/KairoButton"
-            android:text="Reprendre la recopie"
+            android:text="@string/resume_mirroring"
             android:visibility="gone" />
 
         <Button
             android:id="@+id/settings"
             style="@style/KairoButton"
-            android:text="Réglages" />
+            android:text="@string/settings" />
     </LinearLayout>
 </LinearLayout>

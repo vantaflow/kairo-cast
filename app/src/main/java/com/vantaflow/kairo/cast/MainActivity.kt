@@ -43,9 +43,9 @@ class MainActivity : Activity() {
         super.onResume()
         val name = CastSettings(PrefsStore(this)).name
         findViewById<TextView>(R.id.name).text = name
-        findViewById<TextView>(R.id.ip).text = "Adresse IP : " + (NetworkInfo.localIpv4(this) ?: "non connecté")
+        findViewById<TextView>(R.id.ip).text = getString(R.string.ip_label, NetworkInfo.localIpv4(this) ?: getString(R.string.not_connected))
         findViewById<TextView>(R.id.instruction).text =
-            "Sur le Mac : Centre de contrôle › Recopie de l'écran › $name"
+            getString(R.string.instruction, name)
         collector = scope.launch {
             ReceiverState.status.collect { render(it) }
         }
@@ -55,16 +55,18 @@ class MainActivity : Activity() {
     private fun render(s: Status) {
         when (s) {
             is Status.Mirroring -> {
-                statusView.text = "Recopie en cours (${s.width}×${s.height})"
-                resume.visibility = View.VISIBLE
-                resume.requestFocus()
+                statusView.text = getString(R.string.status_mirroring, s.width, s.height)
+                if (resume.visibility != View.VISIBLE) {
+                    resume.visibility = View.VISIBLE
+                    resume.requestFocus()
+                }
             }
             Status.Waiting -> {
-                statusView.text = "En attente d'une connexion…"
+                statusView.text = getString(R.string.status_waiting)
                 resume.visibility = View.GONE
             }
             Status.Stopped -> {
-                statusView.text = "Récepteur arrêté"
+                statusView.text = getString(R.string.status_stopped)
                 resume.visibility = View.GONE
             }
         }

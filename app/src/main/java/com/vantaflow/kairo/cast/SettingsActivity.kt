@@ -32,27 +32,41 @@ class SettingsActivity : Activity() {
         settings = CastSettings(PrefsStore(this))
         rows = findViewById(R.id.rows)
 
-        nameValue = row("Nom du récepteur") { editName() }
-        qualityValue = row("Netteté") {
+        nameValue = row(R.string.set_name) { editName() }
+        qualityValue = row(R.string.set_quality) {
             val all = StreamQuality.values()
             settings.quality = all[(all.indexOf(settings.quality) + 1) % all.size]
-            restartReceiver()
             refresh()
         }
-        modeValue = row("Affichage") {
+        modeValue = row(R.string.set_display) {
             settings.displayMode = nextMode(settings.displayMode)
             refresh()
         }
-        audioValue = row("Son") { settings.audioEnabled = !settings.audioEnabled; refresh() }
-        bootValue = row("Démarrage avec la box") { settings.startOnBoot = !settings.startOnBoot; refresh() }
-        overlayValue = row("Afficher par-dessus les autres applis") {
+        audioValue = row(R.string.set_audio) { settings.audioEnabled = !settings.audioEnabled; refresh() }
+        bootValue = row(R.string.set_boot) { settings.startOnBoot = !settings.startOnBoot; refresh() }
+        overlayValue = row(R.string.set_overlay) {
             if (!Settings.canDrawOverlays(this)) {
                 startActivity(
                     Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
                 )
             }
         }
+        startName = settings.name
+        startQuality = settings.quality
         rows.getChildAt(0).requestFocus()
+    }
+
+    private var startName = ""
+    private var startQuality = StreamQuality.QHD
+
+    override fun onPause() {
+        // Un seul redémarrage du récepteur, à la sortie, si le nom ou la netteté ont changé.
+        if (settings.name != startName || settings.quality != startQuality) {
+            startName = settings.name
+            startQuality = settings.quality
+            restartReceiver()
+        }
+        super.onPause()
     }
 
     override fun onResume() {
@@ -73,13 +87,13 @@ class SettingsActivity : Activity() {
             StreamQuality.UHD -> "4K"
         }
         modeValue.text = when (settings.displayMode) {
-            DisplayMode.STRETCH -> "Étirer"
-            DisplayMode.FILL -> "Remplir"
-            DisplayMode.FIT -> "Ajuster"
+            DisplayMode.STRETCH -> getString(R.string.mode_stretch)
+            DisplayMode.FILL -> getString(R.string.mode_fill)
+            DisplayMode.FIT -> getString(R.string.mode_fit)
         }
-        audioValue.text = if (settings.audioEnabled) "Activé" else "Désactivé"
-        bootValue.text = if (settings.startOnBoot) "Activé" else "Désactivé"
-        overlayValue.text = if (Settings.canDrawOverlays(this)) "Autorisé" else "Non autorisé — OK pour régler"
+        audioValue.text = getString(if (settings.audioEnabled) R.string.on else R.string.off)
+        bootValue.text = getString(if (settings.startOnBoot) R.string.on else R.string.off)
+        overlayValue.text = getString(if (Settings.canDrawOverlays(this)) R.string.overlay_ok else R.string.overlay_no)
     }
 
     private fun restartReceiver() {
@@ -96,22 +110,19 @@ class SettingsActivity : Activity() {
             setSelectAllOnFocus(true)
         }
         AlertDialog.Builder(this)
-            .setTitle("Nom du récepteur")
+            .setTitle(R.string.set_name)
             .setView(input)
-            .setPositiveButton("Enregistrer") { _, _ ->
+            .setPositiveButton(getString(R.string.save)) { _, _ ->
                 val newName = ReceiverName.normalize(input.text.toString())
-                if (newName != settings.name) {
-                    settings.name = newName
-                    restartReceiver()
-                }
+                if (newName != settings.name) settings.name = newName
                 refresh()
             }
-            .setNegativeButton("Annuler", null)
+            .setNegativeButton(getString(R.string.cancel), null)
             .show()
     }
 
     /** Ligne focalisable : libellé à gauche, valeur à droite. Retourne la vue de la valeur. */
-    private fun row(label: String, onClick: () -> Unit): TextView {
+    private fun row(label: Int, onClick: () -> Unit): TextView {
         val dp = resources.displayMetrics.density
         val value = TextView(this).apply {
             textSize = 22f
@@ -124,11 +135,11 @@ class SettingsActivity : Activity() {
             isFocusable = true
             isClickable = true
             setBackgroundResource(R.drawable.focus_row)
-            setPadding((24 * dp).toInt(), (16 * dp).toInt(), (24 * dp).toInt(), (16 * dp).toInt())
-            minimumHeight = (68 * dp).toInt()
+            setPadding((24 * dp).toInt(), (10 * dp).toInt(), (24 * dp).toInt(), (10 * dp).toInt())
+            minimumHeight = (56 * dp).toInt()
             setOnClickListener { onClick() }
             addView(TextView(context).apply {
-                text = label
+                setText(label)
                 textSize = 22f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(getColor(R.color.kairo_text))
@@ -136,7 +147,7 @@ class SettingsActivity : Activity() {
             addView(value, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         rows.addView(line, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = (10 * dp).toInt()
+            bottomMargin = (6 * dp).toInt()
         })
         return value
     }

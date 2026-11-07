@@ -10,17 +10,17 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingLeft="96dp"
-        android:paddingTop="32dp"
+        android:paddingTop="16dp"
         android:paddingRight="96dp"
-        android:paddingBottom="32dp">
+        android:paddingBottom="16dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:text="Réglages"
+            android:layout_marginBottom="8dp"
+            android:text="@string/settings"
             android:textColor="@color/kairo_text"
-            android:textSize="32sp"
+            android:textSize="28sp"
             android:textStyle="bold" />
 
         <LinearLayout
