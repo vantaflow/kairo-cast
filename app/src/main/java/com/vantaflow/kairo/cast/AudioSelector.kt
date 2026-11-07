@@ -14,11 +14,12 @@ class AudioSelector(
     private var pendingSlot: Int? = null
     private var pendingSince = 0L
 
-    @Synchronized
     fun onActiveChanged(active: List<Int>) {
-        this.active = active.distinct().sorted()
-        if (pendingSlot !in this.active) pendingSlot = null
-        if (audioSlot == null || audioSlot !in this.active) set(this.active.firstOrNull())
+        notify(synchronized(this) {
+            this.active = active.distinct().sorted()
+            if (pendingSlot !in this.active) pendingSlot = null
+            if (audioSlot == null || audioSlot !in this.active) set(this.active.firstOrNull()) else NONE
+        })
     }
 
     @Synchronized
@@ -32,18 +33,28 @@ class AudioSelector(
         }
     }
 
-    @Synchronized
     fun tick() {
-        val p = pendingSlot ?: return
-        if (clock() - pendingSince >= focusDelayMs) {
-            pendingSlot = null
-            set(p)
-        }
+        notify(synchronized(this) {
+            val p = pendingSlot
+            if (p != null && clock() - pendingSince >= focusDelayMs) {
+                pendingSlot = null
+                set(p)
+            } else NONE
+        })
     }
 
-    private fun set(slot: Int?) {
-        if (slot == audioSlot) return
+    /** Applique le changement sous verrou ; l'appelant notifie l'écouteur hors verrou. */
+    private fun set(slot: Int?): Change {
+        if (slot == audioSlot) return NONE
         audioSlot = slot
-        listener(slot)
+        return Change(slot)
     }
+
+    private class Change(val slot: Int?)
+
+    private fun notify(c: Change) {
+        if (c !== NONE) listener(c.slot)
+    }
+
+    private companion object { val NONE = Change(null) }
 }
