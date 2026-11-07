@@ -6,4 +6,6 @@
     <color name="kairo_row_focus">#1E3A8A</color>
     <color name="kairo_text">#F1F5F9</color>
     <color name="kairo_muted">#94A3B8</color>
+    <color name="tile_label_bg">#99000000</color>
+    <color name="tile_focus">#2563EB</color>
 </resources>

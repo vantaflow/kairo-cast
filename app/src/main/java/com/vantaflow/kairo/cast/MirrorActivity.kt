@@ -5,33 +5,44 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Matrix
-import android.graphics.SurfaceTexture
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
-import android.view.Surface
-import android.view.TextureView
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.Toast
 
+/** Écran de recopie : une tuile par emplacement actif (mosaïque adaptative), plein écran pour une seule source. */
 class MirrorActivity : Activity() {
-    private lateinit var texture: TextureView
     private lateinit var settings: CastSettings
+    private lateinit var root: FrameLayout
+    private val tiles = HashMap<Int, MirrorTile>()
+    private val ui = Handler(Looper.getMainLooper())
+    private val labels = TileLabelTimer()
     private var toast: Toast? = null
-    private val formatListener: (IntArray) -> Unit = { f -> runOnUiThread { onFormat(f[0], f[1], f[2], f[3], f[4], f[5]) } }
-    private var attached: MirrorPipeline? = null
-    private var surface: Surface? = null
-    private var videoW = 0
-    private var videoH = 0
-    private var content = IntArray(4)
+    private var lastSlots: List<SlotState> = emptyList()
+    private var shown: List<Int> = emptyList() // emplacements MIRRORING affichés
+    private var saturatedSeen = HashSet<Int>()
+    private var focused = -1
+    private var zoomed: Int? = null
 
     private val closeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.i(TAG, "fermeture demandée (connexion terminée)")
+            Log.i(TAG, "fermeture demandée (plus aucune source)")
             finish()
+        }
+    }
+
+    private val tick = object : Runnable {
+        override fun run() {
+            MirrorAudio.selector.tick()
+            sync()
+            refreshDecor()
+            ui.postDelayed(this, TICK_MS)
         }
     }
 
@@ -40,36 +51,21 @@ class MirrorActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_mirror)
         settings = CastSettings(PrefsStore(this))
-        texture = findViewById(R.id.texture)
-        texture.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, orr, ob ->
-            if (r - l != orr - ol || b - t != ob - ot) applyTransform()
+        root = findViewById(R.id.mirror_root)
+        // Les quatre tuiles sont créées une fois ; seul leur placement change ensuite.
+        for (slot in 0 until MAX_TILES) {
+            val tile = MirrorTile(this, slot)
+            tile.visibility = View.GONE
+            tile.onFormatChanged = { relayout() }
+            tile.onSurfaceReady = { bindTiles() }
+            root.addView(tile, FrameLayout.LayoutParams(1, 1))
+            tiles[slot] = tile
         }
-        texture.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-            override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-                val s = Surface(st)
-                surface = s
-                val p = MirrorBus.pipeline
-                if (p == null) {
-                    Log.w(TAG, "aucune recopie en cours : fermeture")
-                    finish()
-                    return
-                }
-                attached = p
-                p.attach(s, formatListener)
-                Log.i(TAG, "surface prête ${w}x$h, branchée au pipeline")
-                applyTransform()
-            }
-
-            override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = applyTransform()
-
-            override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-                detach()
-                return true
-            }
-
-            override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
+        root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, orr, ob ->
+            if (r - l != orr - ol || b - t != ob - ot) relayout()
         }
         registerCloseReceiver()
+        ui.post(tick)
     }
 
     private fun registerCloseReceiver() {
@@ -81,36 +77,100 @@ class MirrorActivity : Activity() {
         }
     }
 
-    private fun detach() {
-        attached?.detach(formatListener)
-        attached = null
-        surface?.release()
-        surface = null
+    /** Lit l'état des emplacements ; recalcule la disposition seulement quand il change. */
+    private fun sync() {
+        val slots = SlotsState.slots.value
+        if (slots === lastSlots) return
+        lastSlots = slots
+        val mirroring = slots.filter { it.phase == SlotPhase.MIRRORING }.map { it.slot }.sorted()
+        val saturated = slots.filter { it.phase == SlotPhase.SATURATED }
+        for (s in saturated) if (saturatedSeen.add(s.slot)) {
+            toast?.cancel()
+            toast = Toast.makeText(this, getString(R.string.tile_saturated, s.name), Toast.LENGTH_LONG).also { it.show() }
+        }
+        saturatedSeen.retainAll(saturated.map { it.slot }.toSet())
+        for (s in mirroring) if (s !in shown) labels.touch(s)
+        for (s in shown) if (s !in mirroring) labels.forget(s)
+        shown = mirroring
+        if (zoomed != null && zoomed !in mirroring) zoomed = null
+        if (focused !in mirroring) {
+            focused = mirroring.firstOrNull() ?: -1
+            if (focused >= 0) labels.touch(focused)
+        }
+        for ((slot, tile) in tiles) {
+            if (slot !in mirroring) {
+                tile.unbind()
+                tile.visibility = View.GONE
+            } else {
+                tile.setName(slots.first { it.slot == slot }.name)
+            }
+        }
+        bindTiles()
+        relayout()
     }
 
-    private fun onFormat(w: Int, h: Int, cx: Int, cy: Int, cw: Int, ch: Int) {
-        videoW = w
-        videoH = h
-        content = intArrayOf(cx, cy, cw, ch)
-        applyTransform()
+    private fun bindTiles() {
+        for (s in shown) tiles[s]?.let { if (it.hasSurface) it.bind(MirrorBus.pipeline(s)) }
     }
 
-    private fun applyTransform() {
-        val v = DisplayTransform.matrixValues(
-            videoW, videoH, content[0], content[1], content[2], content[3],
-            texture.width, texture.height, settings.displayMode,
-        )
-        texture.setTransform(Matrix().apply { setValues(v) })
+    private fun stateOf(slot: Int) = lastSlots.firstOrNull { it.slot == slot }
+
+    private fun ratioOf(slot: Int): Float {
+        val t = tiles[slot]?.contentRatio() ?: 0f
+        if (t > 0f) return t
+        val st = stateOf(slot)
+        return if (st != null && st.width > 0 && st.height > 0) st.width.toFloat() / st.height else TileLayout.DEFAULT_RATIO
+    }
+
+    private var rects: Map<Int, TileRect> = emptyMap()
+
+    private fun relayout() {
+        val w = root.width
+        val h = root.height
+        if (w <= 0 || h <= 0 || shown.isEmpty()) return
+        val single = shown.size == 1
+        val z = zoomed
+        rects = TileLayout.compute(shown.associateWith { ratioOf(it) }, w, h, z)
+        for (s in shown) {
+            val tile = tiles[s] ?: continue
+            val r = if (single || s == z) TileRect(0, 0, w, h) else rects[s]
+            if (r == null) continue
+            tile.place(r.left, r.top, r.width, r.height)
+            // Source seule ou zoomée : réglage de l'utilisateur ; mosaïque : Ajuster dans la tuile.
+            tile.setDisplayMode(if (single || s == z) settings.slotDisplayMode(s) else DisplayMode.FIT)
+            tile.visibility = if (z != null && s != z) View.INVISIBLE else View.VISIBLE
+        }
+        refreshDecor()
+    }
+
+    private fun refreshDecor() {
+        val several = shown.size >= 2
+        val audio = MirrorAudio.selector.audioSlot
+        for (s in shown) {
+            val tile = tiles[s] ?: continue
+            tile.setFocusedOutline(several && s == focused && zoomed == null)
+            tile.setSpeaker(several && s == audio)
+            tile.showLabel(several && labels.visible(s))
+        }
+    }
+
+    private fun setFocus(slot: Int) {
+        if (slot == focused) return
+        focused = slot
+        labels.touch(slot)
+        MirrorAudio.selector.onFocus(slot)
+        refreshDecor()
     }
 
     private fun cycleMode() {
-        val next = when (settings.displayMode) {
+        val slot = zoomed ?: shown.firstOrNull() ?: return
+        val next = when (settings.slotDisplayMode(slot)) {
             DisplayMode.FILL -> DisplayMode.STRETCH
             DisplayMode.STRETCH -> DisplayMode.FIT
             DisplayMode.FIT -> DisplayMode.FILL
         }
-        settings.displayMode = next
-        applyTransform()
+        settings.setSlotDisplayMode(slot, next)
+        relayout()
         val label = when (next) {
             DisplayMode.FILL -> "Remplir"
             DisplayMode.STRETCH -> "Étirer"
@@ -122,13 +182,33 @@ class MirrorActivity : Activity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MENU -> {
-                if (event.repeatCount == 0) cycleMode()
+        when (val a = MirrorKeys.map(keyCode, event.repeatCount, shown.size)) {
+            is MirrorKeyAction.MoveFocus -> {
+                if (zoomed == null && focused >= 0 && rects.isNotEmpty()) setFocus(TileLayout.nextFocus(rects, focused, a.dx, a.dy))
                 return true
             }
+            MirrorKeyAction.CycleMode -> { cycleMode(); return true }
+            MirrorKeyAction.ToggleZoom -> {
+                zoomed = if (zoomed == null) focused.takeIf { it >= 0 } else null
+                if (zoomed != null) labels.touch(zoomed!!)
+                relayout()
+                return true
+            }
+            MirrorKeyAction.None -> {}
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    /** Retour : sort d'abord du zoom, puis ferme l'écran. */
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (zoomed != null) {
+            zoomed = null
+            relayout()
+        } else {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -144,12 +224,15 @@ class MirrorActivity : Activity() {
     }
 
     override fun onDestroy() {
+        ui.removeCallbacksAndMessages(null)
         try { unregisterReceiver(closeReceiver) } catch (_: Exception) {}
-        detach()
+        tiles.values.forEach { it.unbind() }
         super.onDestroy()
     }
 
     private companion object {
         const val TAG = "KairoCast"
+        const val MAX_TILES = 4
+        const val TICK_MS = 200L
     }
 }

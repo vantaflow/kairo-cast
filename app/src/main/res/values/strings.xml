@@ -26,4 +26,5 @@
     <string name="overlay_no">Non autorisé — OK pour régler</string>
     <string name="save">Enregistrer</string>
     <string name="cancel">Annuler</string>
+    <string name="tile_saturated">%1$s : trop de sources affichées</string>
 </resources>

@@ -22,10 +22,19 @@ class ReceiverService : Service() {
     private var supervisor: SlotSupervisor? = null // worker uniquement
     private var policy: SlotPolicy? = null
     private var policyKey: Pair<Int, StreamQuality>? = null
-    private val audio = AudioSelector()
+    private val audio = MirrorAudio.selector
     private val activeLock = Any()
     private var lastActive: List<Int> = emptyList()
     private var destroyed = false
+
+    init {
+        // Le focus de l'écran de recopie déplace le son : on applique hors du thread principal.
+        audio.listener = {
+            try {
+                worker.execute { if (!destroyed) { applyAudio(); refreshUi() } }
+            } catch (_: java.util.concurrent.RejectedExecutionException) {}
+        }
+    }
 
     private val host = object : SlotHost {
         private val advertisers = HashMap<Int, MdnsAdvertiser>()
@@ -141,10 +150,15 @@ class ReceiverService : Service() {
             main.post { sendBroadcast(Intent(ACTION_CLOSE_MIRROR).setPackage(packageName)) }
         }
         if (prev != next) audio.onActiveChanged(next)
+        applyAudio()
+        refreshUi()
+    }
+
+    /** Un seul emplacement est audible : les autres sont coupés (libère leur lecteur audio). */
+    private fun applyAudio() {
         val sel = audio.audioSlot
         val cs = synchronized(controllers) { controllers.toMap() }
         cs.forEach { (s, c) -> c.setAudioMuted(s != sel) }
-        refreshUi()
     }
 
     private fun refreshUi() {
@@ -173,6 +187,7 @@ class ReceiverService : Service() {
 
     override fun onDestroy() {
         destroyed = true
+        audio.listener = {}
         main.removeCallbacksAndMessages(null)
         worker.execute { stopAll() }
         worker.shutdown()

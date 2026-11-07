@@ -58,3 +58,8 @@ class AudioSelector(
 
     private companion object { val NONE = Change(null) }
 }
+
+/** Sélecteur audio unique, partagé entre le service (arrivées/départs) et l'écran de recopie (focus). */
+object MirrorAudio {
+    val selector = AudioSelector()
+}
