@@ -1,6 +1,7 @@
 package com.vantaflow.kairo.cast.link
 
 import android.util.Log
+import com.vantaflow.kairo.cast.SlotPolicy
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -30,6 +31,7 @@ class LinkServer(
     private val port: Int = DEFAULT_PORT,
     private val listener: LinkListener,
     private val timeoutMs: Long = 6000,
+    private val helloTimeoutMs: Long = 3000,
     private val log: (String) -> Unit = { m -> try { Log.i(TAG, m) } catch (_: Throwable) {} },
 ) {
     private val lock = Any()
@@ -39,6 +41,7 @@ class LinkServer(
     private var current: Client? = null
     private val writer = Executors.newSingleThreadScheduledExecutor { Thread(it, "kairo-link-writer").apply { isDaemon = true } }
     @Volatile private var running = false
+    private val pending = java.util.concurrent.atomic.AtomicInteger(0)
 
     val isRunning: Boolean get() = running
 
@@ -50,8 +53,13 @@ class LinkServer(
         synchronized(lock) {
             if (running) return
             val ss = ServerSocket()
-            ss.reuseAddress = true
-            ss.bind(InetSocketAddress(port))
+            try {
+                ss.reuseAddress = true
+                ss.bind(InetSocketAddress(port))
+            } catch (e: IOException) {
+                try { ss.close() } catch (_: Exception) {}
+                throw e
+            }
             server = ss
             running = true
             acceptThread = Thread({ acceptLoop(ss) }, "kairo-link-accept").apply { isDaemon = true; start() }
@@ -103,6 +111,12 @@ class LinkServer(
                 s.tcpNoDelay = true
                 s.soTimeout = timeoutMs.toInt()
             } catch (_: Exception) {}
+            if (pending.incrementAndGet() > MAX_PENDING) {
+                pending.decrementAndGet()
+                log("Link : trop de connexions sans HELLO, refusée")
+                try { s.close() } catch (_: Exception) {}
+                continue
+            }
             Thread({ Client(s).run() }, "kairo-link-client").apply { isDaemon = true; start() }
         }
     }
@@ -111,15 +125,25 @@ class LinkServer(
         private val sendLock = ReentrantLock()
         private val finished = AtomicBoolean(false)
         @Volatile private var opened = false
+        @Volatile private var helloReceived = false
+        private val pendingReleased = AtomicBoolean(false)
+
+        private fun releasePending() { if (pendingReleased.compareAndSet(false, true)) pending.decrementAndGet() }
 
         fun run() {
             val peer = socket.remoteSocketAddress
             try {
                 val input = socket.getInputStream().buffered(64 * 1024)
-                val first = LinkCodec.read(input)
+                // Avant HELLO : première trame limitée et délai global court (un pair sans HELLO ne garde ni mémoire ni fil).
+                val deadline = Thread({
+                    try { Thread.sleep(helloTimeoutMs) } catch (_: InterruptedException) { return@Thread }
+                    if (!helloReceived) { log("Link : pas de HELLO en ${helloTimeoutMs} ms ($peer)"); finish() }
+                }, "kairo-link-hello").apply { isDaemon = true; start() }
+                val first = try { LinkCodec.read(input, MAX_HELLO_PAYLOAD) } finally { helloReceived = true; deadline.interrupt() }
                 if (first == null || first.type != LinkType.HELLO) throw LinkProtocolException("HELLO attendu")
                 val hello = Hello.parse(first.payload)
-                if (hello.v != 1 || hello.w <= 0 || hello.h <= 0) throw LinkProtocolException("HELLO non pris en charge")
+                if (hello.v != 1 || !SlotPolicy.isValidSize(hello.w, hello.h)) throw LinkProtocolException("HELLO non pris en charge")
+                releasePending()
                 if (!adopt()) return
                 log("Link : session ouverte par ${hello.name} ($peer) ${hello.w}x${hello.h}@${hello.fps}")
                 synchronized(dispatchLock) {
@@ -146,6 +170,7 @@ class LinkServer(
             } catch (e: Exception) {
                 log("Link : erreur inattendue ($peer) : $e")
             } finally {
+                releasePending()
                 finish()
                 synchronized(lock) { if (current === this) current = null }
             }
@@ -231,6 +256,8 @@ class LinkServer(
 
     companion object {
         const val DEFAULT_PORT = 7300
+        const val MAX_PENDING = 2
+        const val MAX_HELLO_PAYLOAD = 4096
         private const val TAG = "KairoCast"
     }
 }

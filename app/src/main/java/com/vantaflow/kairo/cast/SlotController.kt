@@ -84,7 +84,7 @@ class SlotController(
     @Volatile private var saturated = false
     @Volatile private var audioMuted = true // muet tant que le service n'a pas désigné cet emplacement
     private var ignoredLogged = false
-    private var link: LinkEndpoint? = null
+    @Volatile private var link: LinkEndpoint? = null
     private var unadvertise: (() -> Unit)? = null
     private var started = false
     @Volatile private var width = 0

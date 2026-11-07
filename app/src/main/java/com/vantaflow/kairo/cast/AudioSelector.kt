@@ -7,7 +7,7 @@ class AudioSelector(
 ) {
     var listener: (Int?) -> Unit = {}
 
-    var audioSlot: Int? = null
+    @Volatile var audioSlot: Int? = null
         private set
 
     /** Emplacement épinglé par l'utilisateur ; null = le son suit le focus. Conservé même si l'emplacement s'éteint. */

@@ -148,4 +148,51 @@ class LinkServerTest {
         server.stop()
         assertEquals("closed", rec.next())
     }
+
+    private fun rawHello(w: Int, h: Int) =
+        LinkFrame(LinkType.HELLO, 0, 0, Hello(1, "PC", w, h, 30, "pcm_s16le_48000_2").toBytes())
+
+    @Test fun helloWithAbsurdSizeIsRejected() {
+        for ((w, h) in listOf(65535 to 65535, 4097 to 100, 0 to 100, -1 to 5)) {
+            val s = Socket("127.0.0.1", server.boundPort); sockets.add(s)
+            send(s, rawHello(w, h))
+        }
+        assertEquals(null, rec.next(500))
+    }
+
+    @Test fun oversizedFirstFrameIsRefused() {
+        val s = Socket("127.0.0.1", server.boundPort); sockets.add(s)
+        send(s, LinkFrame(LinkType.HELLO, 0, 0, ByteArray(100_000)))
+        s.soTimeout = 2000
+        // le serveur coupe sans lire la charge (fin de flux ou RST)
+        val closed = try { s.getInputStream().read() == -1 } catch (_: java.io.IOException) { true }
+        assertTrue(closed)
+        assertEquals(null, rec.next(200))
+    }
+
+    @Test fun silentClientIsClosedAfterHelloDeadline() {
+        val s = Socket("127.0.0.1", server.boundPort); sockets.add(s)
+        s.soTimeout = 3000
+        val t0 = System.currentTimeMillis()
+        assertEquals(-1, s.getInputStream().read())
+        assertTrue(System.currentTimeMillis() - t0 < 2500)
+    }
+
+    @Test fun pendingClientsAreCapped() {
+        server.stop()
+        rec = Rec()
+        server = LinkServer(0, rec, 10_000, 5_000)
+        server.start()
+        val silent = (1..LinkServer.MAX_PENDING).map { Socket("127.0.0.1", server.boundPort).also { s -> sockets.add(s) } }
+        Thread.sleep(200)
+        val extra = Socket("127.0.0.1", server.boundPort); sockets.add(extra)
+        extra.soTimeout = 1500
+        assertEquals(-1, extra.getInputStream().read()) // refusée aussitôt
+        assertEquals(LinkServer.MAX_PENDING, silent.size)
+        // un client légitime passe dès qu'une place se libère
+        silent[0].close()
+        Thread.sleep(300)
+        connect("OK")
+        assertEquals("open:OK", rec.next())
+    }
 }

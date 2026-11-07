@@ -84,7 +84,7 @@ class SlotControllerPolicyTest {
         return a to b
     }
 
-    private val one = SlotPolicy(1, StreamQuality.QHD).costOf(1920, 1080)
+    private val one = SlotPolicy(1, StreamQuality.QHD).costOf(1920, 1080).toInt()
 
     @Test fun acceptedRuns() =
         assertEquals(SaturationAction.RUN, admissionOutcome(Admission.Accepted, MirrorSource.AIRPLAY))

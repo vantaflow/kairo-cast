@@ -21,8 +21,8 @@ class SlotPolicyTest {
 
     @Test fun budgetMath() {
         val p = policy(1)
-        assertEquals(8100 * 30, p.costOf(1920, 1080))
-        assertEquals(3600 * 30, p.costOf(1280, 720))
+        assertEquals(8100L * 30, p.costOf(1920, 1080))
+        assertEquals(3600L * 30, p.costOf(1280, 720))
     }
 
     @Test fun twoFullHdFit() {
@@ -33,13 +33,13 @@ class SlotPolicyTest {
 
     @Test fun threeAt1920x1200Fit() {
         val p = policy(3)
-        assertEquals(270_000, p.costOf(1920, 1200))
+        assertEquals(270_000L, p.costOf(1920, 1200))
         for (i in 0..2) assertEquals(Admission.Accepted, p.admit(i, 1920, 1200))
     }
 
     @Test fun fourAt1280x800Fit() {
         val p = policy(4)
-        assertEquals(120_000, p.costOf(1280, 800))
+        assertEquals(120_000L, p.costOf(1280, 800))
         for (i in 0..3) assertEquals(Admission.Accepted, p.admit(i, 1280, 800))
     }
 
@@ -50,7 +50,7 @@ class SlotPolicyTest {
 
     private fun tight(): SlotPolicy {
         val p = policy(4)
-        return SlotPolicy(4, StreamQuality.QHD, p.costOf(1280, 720) * 2)
+        return SlotPolicy(4, StreamQuality.QHD, (p.costOf(1280, 720) * 2).toInt())
     }
 
     @Test fun extraSourceRefused() {
@@ -124,7 +124,7 @@ class SlotPolicyTest {
         val p = policy(2)
         assertEquals(Admission.Accepted, p.admit(0, 2880, 1800))
         assertEquals(Admission.Accepted, p.admit(1, 554, 1200))
-        assertTrue(p.costOf(2880, 1800) + p.costOf(554, 1200) <= SlotPolicy.DEFAULT_BUDGET)
+        assertTrue(p.costOf(2880, 1800) + p.costOf(554, 1200) <= SlotPolicy.DEFAULT_BUDGET.toLong())
     }
 
     @Test fun twoMacsAt2880x1800SecondIsSaturated() {
@@ -149,5 +149,20 @@ class SlotPolicyTest {
         val p = policy(3)
         assertEquals(AnnouncedMode(1280, 800, 30), p.announced())
         for (i in 0..2) assertEquals(Admission.Accepted, p.admit(i, 1280, 800))
+    }
+
+    @Test fun hugeSizesCannotBypassBudget() {
+        val p = policy(2)
+        assertEquals(Admission.Accepted, p.admit(0, 1920, 1080))
+        assertTrue(p.costOf(65535, 65535) > 0)
+        assertEquals(Admission.Saturated, p.admit(1, 65535, 65535))
+        assertEquals(Admission.Saturated, p.admit(1, 4097, 100))
+        assertEquals(Admission.Saturated, p.admit(1, 0, 100))
+        assertTrue(p.costOf(4096, 4096) > 0)
+    }
+
+    @Test fun hugeSizeRefusedEvenWhenAlone() {
+        val p = policy(1)
+        assertEquals(Admission.Saturated, p.admit(0, 65535, 65535))
     }
 }

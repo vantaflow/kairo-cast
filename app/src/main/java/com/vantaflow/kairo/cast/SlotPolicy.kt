@@ -23,8 +23,8 @@ class SlotPolicy(
         this.quality = quality
     }
 
-    private val admitted = LinkedHashMap<Int, Int>()
-    private val saturated = LinkedHashMap<Int, Int>()
+    private val admitted = LinkedHashMap<Int, Long>()
+    private val saturated = LinkedHashMap<Int, Long>()
 
     fun announced(): AnnouncedMode = when {
         slotCount <= 1 -> AnnouncedMode(quality.width, quality.height, FPS)
@@ -32,15 +32,16 @@ class SlotPolicy(
         else -> AnnouncedMode(1280, 800, FPS)
     }
 
-    fun costOf(width: Int, height: Int): Int = width * height / 256 * 30
+    fun costOf(width: Int, height: Int): Long = width.toLong() * height.toLong() / 256 * 30
 
     @Synchronized
     fun admit(slot: Int, width: Int, height: Int): Admission {
         admitted.remove(slot)
         saturated.remove(slot)
+        if (!isValidSize(width, height)) return Admission.Saturated // taille absurde : refusée, jamais reprise
         val cost = costOf(width, height)
         // Une source seule est toujours admise à la qualité choisie ; le budget joue dès 2 sources.
-        return if (admitted.isEmpty() || admitted.values.sum() + cost <= budgetCap) {
+        return if (admitted.isEmpty() || admitted.values.sum() + cost <= budgetCap.toLong()) {
             admitted[slot] = cost
             Admission.Accepted
         } else {
@@ -57,7 +58,7 @@ class SlotPolicy(
         val it = saturated.entries.iterator()
         while (it.hasNext()) {
             val (s, cost) = it.next()
-            if (admitted.values.sum() + cost <= budgetCap) {
+            if (admitted.values.sum() + cost <= budgetCap.toLong()) {
                 admitted[s] = cost
                 freed += s
                 it.remove()
@@ -71,6 +72,12 @@ class SlotPolicy(
 
     companion object {
         fun modeBucket(slotCount: Int): Int = if (slotCount <= 1) 1 else if (slotCount == 2) 2 else 3
+        const val MAX_DIMENSION = 4096
+
+        /** Dimensions plausibles : 1..[MAX_DIMENSION] de chaque côté. */
+        fun isValidSize(width: Int, height: Int): Boolean =
+            width in 1..MAX_DIMENSION && height in 1..MAX_DIMENSION
+
         const val DEFAULT_BUDGET = 829_440
         const val MESSAGE_SATURATED = "Trop de sources pour cette box"
         private const val FPS = 30

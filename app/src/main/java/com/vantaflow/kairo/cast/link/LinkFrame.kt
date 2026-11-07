@@ -33,7 +33,7 @@ object LinkCodec {
     }
 
     /** null = fin de flux propre (avant le premier octet d'une trame). */
-    fun read(input: InputStream): LinkFrame? {
+    fun read(input: InputStream, maxPayload: Int = MAX_PAYLOAD): LinkFrame? {
         val h = ByteArray(HEADER)
         val n = readFully(input, h, allowEmpty = true)
         if (n == 0) return null
@@ -46,7 +46,7 @@ object LinkCodec {
         val pts = bb.long
         val len = bb.int.toLong() and 0xFFFFFFFFL
         val type = LinkType.of(code) ?: throw LinkProtocolException("type inconnu $code")
-        if (len > MAX_PAYLOAD) throw LinkProtocolException("charge trop grande $len")
+        if (len > maxPayload) throw LinkProtocolException("charge trop grande $len")
         val payload = ByteArray(len.toInt())
         if (len > 0) readFully(input, payload, allowEmpty = false)
         return LinkFrame(type, flags, pts, payload)

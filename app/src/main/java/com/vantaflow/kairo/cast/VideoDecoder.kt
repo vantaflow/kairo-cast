@@ -190,8 +190,9 @@ class VideoDecoder(
 
     private fun configure() {
         resetCodec()
-        val c = MediaCodec.createDecoderByType(MIME)
+        var c: MediaCodec? = null
         try {
+            c = MediaCodec.createDecoderByType(MIME)
             val format = MediaFormat.createVideoFormat(MIME, width, height)
             val lowLatency = try {
                 c.codecInfo.getCapabilitiesForType(MIME)
@@ -216,8 +217,8 @@ class VideoDecoder(
             firstFrameLogged = false
             Log.i(TAG, "décodeur configuré : ${c.name} ${width}x$height lowLatency=$lowLatency")
         } catch (e: Exception) {
-            try { c.release() } catch (_: Exception) {}
-            if (isResourceError(e)) {
+            try { c?.release() } catch (_: Exception) {}
+            if (c == null || isResourceError(e)) { // création impossible = ressource indisponible (pas de relance à chaque image)
                 Log.e(TAG, "ressources de décodage insuffisantes : $e")
                 resourceBlocked = true
                 try { onResourceError?.invoke() } catch (x: Exception) { Log.w(TAG, "onResourceError : $x") }
