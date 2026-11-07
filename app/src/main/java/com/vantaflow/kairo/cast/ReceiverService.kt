@@ -204,8 +204,8 @@ class ReceiverService : Service() {
         val name = settings.name
         AudioPlayer.logAvailableDecoders()
         accepting = true
-        val ok = NativeReceiver.start(name, settings.deviceId, File(filesDir, "airplay.key").path,
-            settings.quality.width, settings.quality.height, listener)
+        val ok = NativeReceiver.start(0, name, settings.deviceId, File(filesDir, "airplay.key").path,
+            settings.quality.width, settings.quality.height, 0, SlotPorts.of(0), listener)
         if (!ok) {
             Log.e(TAG, "démarrage du serveur natif échoué")
             accepting = false
@@ -226,10 +226,10 @@ class ReceiverService : Service() {
         val adv = MdnsAdvertiser(this)
         adv.register(
             name,
-            NativeReceiver.raopServiceName(),
-            NativeReceiver.AIRPLAY_PORT,
-            TxtRecord.parse(NativeReceiver.airplayTxt()),
-            TxtRecord.parse(NativeReceiver.raopTxt()),
+            NativeReceiver.raopServiceName(0),
+            SlotPorts.of(0).airplayHttp,
+            TxtRecord.parse(NativeReceiver.airplayTxt(0)),
+            TxtRecord.parse(NativeReceiver.raopTxt(0)),
             linkPort,
         )
         advertiser = adv
@@ -245,7 +245,7 @@ class ReceiverService : Service() {
         advertiser = null
         linkServer?.stop()
         linkServer = null
-        NativeReceiver.stop()
+        NativeReceiver.stop(0)
         running = false
         synchronized(arb) {
             owner = MirrorSource.NONE

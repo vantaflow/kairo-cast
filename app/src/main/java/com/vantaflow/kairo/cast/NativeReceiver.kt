@@ -1,29 +1,59 @@
 package com.vantaflow.kairo.cast
 
+/**
+ * Serveurs AirPlay natifs, un par emplacement (0 until [MAX_SLOTS]), indépendants.
+ * Ne jamais appeler [start]/[stop]/les accesseurs TXT depuis un rappel de [ReceiverListener]
+ * (le rappel tourne sur un thread que l'arrêt attend : interblocage).
+ */
 object NativeReceiver {
-    const val AIRPLAY_PORT = 7000
+    /** Chargée au premier appel natif : les fonctions pures restent testables sur la JVM. */
+    private val library by lazy { System.loadLibrary("kairocast") }
 
-    init {
-        System.loadLibrary("kairocast")
+    private fun loaded() { library }
+
+    fun requireSlot(slot: Int) {
+        require(slot in 0 until MAX_SLOTS) { "emplacement hors limites : $slot" }
     }
 
-    /** Démarre le serveur AirPlay. deviceId = "aa:bb:cc:dd:ee:ff". */
-    fun start(name: String, deviceId: String, keyFile: String, width: Int, height: Int, listener: ReceiverListener): Boolean =
-        nativeStart(name, deviceId, keyFile, width, height, listener)
+    /** Ordre attendu par le natif : [http, miroir, timing, contrôle, données]. */
+    fun nativePortsArray(ports: SlotPorts): IntArray =
+        intArrayOf(ports.airplayHttp, ports.airplayMirror, ports.udpTiming, ports.udpControl, ports.udpData)
 
-    fun stop() = nativeStop()
+    /**
+     * Démarre le serveur de l'emplacement [slot] (n'arrête que celui-ci s'il tournait).
+     * deviceId = "aa:bb:cc:dd:ee:ff" ; maxFps <= 0 : défaut d'UxPlay (30).
+     */
+    fun start(
+        slot: Int, name: String, deviceId: String, keyFile: String, width: Int, height: Int, maxFps: Int,
+        ports: SlotPorts, listener: ReceiverListener,
+    ): Boolean {
+        requireSlot(slot)
+        loaded()
+        return nativeStart(slot, name, deviceId, keyFile, width, height, maxFps, nativePortsArray(ports), listener)
+    }
 
-    fun airplayTxt(): ByteArray = nativeAirplayTxt()
+    fun stop(slot: Int) { requireSlot(slot); loaded(); nativeStop(slot) }
 
-    fun raopTxt(): ByteArray = nativeRaopTxt()
+    /** Admission des nouveaux clients de l'emplacement (vrai par défaut). */
+    fun setAdmit(slot: Int, allow: Boolean) { requireSlot(slot); loaded(); nativeSetAdmit(slot, allow) }
+
+    fun airplayTxt(slot: Int): ByteArray { requireSlot(slot); loaded(); return nativeAirplayTxt(slot) }
+
+    fun raopTxt(slot: Int): ByteArray { requireSlot(slot); loaded(); return nativeRaopTxt(slot) }
 
     /** "<HEX12>@<name>" */
-    fun raopServiceName(): String = nativeRaopServiceName()
+    fun raopServiceName(slot: Int): String { requireSlot(slot); loaded(); return nativeRaopServiceName(slot) }
 
-    external fun nativeVersion(): String
-    private external fun nativeStart(name: String, deviceId: String, keyFile: String, width: Int, height: Int, listener: ReceiverListener): Boolean
-    private external fun nativeStop()
-    private external fun nativeAirplayTxt(): ByteArray
-    private external fun nativeRaopTxt(): ByteArray
-    private external fun nativeRaopServiceName(): String
+    fun version(): String { loaded(); return nativeVersion() }
+
+    private external fun nativeVersion(): String
+    private external fun nativeStart(
+        slot: Int, name: String, deviceId: String, keyFile: String, width: Int, height: Int, maxFps: Int,
+        ports: IntArray, listener: ReceiverListener,
+    ): Boolean
+    private external fun nativeStop(slot: Int)
+    private external fun nativeSetAdmit(slot: Int, allow: Boolean)
+    private external fun nativeAirplayTxt(slot: Int): ByteArray
+    private external fun nativeRaopTxt(slot: Int): ByteArray
+    private external fun nativeRaopServiceName(slot: Int): String
 }

@@ -16,8 +16,17 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 static JavaVM *g_vm = NULL;
-static jobject g_listener = NULL;            /* reference globale */
+/* Une reference globale par emplacement, protegee par un verrou commun (court). */
+static jobject g_listener[KAIRO_MAX_SLOTS];
 static pthread_mutex_t g_listener_lock = PTHREAD_MUTEX_INITIALIZER;
+/* Serialise start/stop d'un meme emplacement (jamais pris par un callback). */
+static pthread_mutex_t g_api_lock[KAIRO_MAX_SLOTS] = {
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER
+};
+_Static_assert(KAIRO_MAX_SLOTS == 4, "g_api_lock a mettre a jour");
+/* Methodes de l'interface ReceiverListener, resolues une fois dans JNI_OnLoad :
+ * valables pour toute implementation, jamais reaffectees pendant qu'un serveur tourne. */
 static jmethodID m_opened, m_closed, m_format, m_video, m_audio, m_volume, m_reset;
 
 typedef struct {
@@ -72,29 +81,32 @@ static void check_exception(JNIEnv *env)
     }
 }
 
-static jobject listener_ref(void)
+/* La reference reste valide pendant le callback : elle n'est liberee qu'apres
+ * kairo_server_stop(slot), qui attend la fin des threads de l'emplacement. */
+static jobject listener_ref(int slot)
 {
+    if (slot < 0 || slot >= KAIRO_MAX_SLOTS) return NULL;
     pthread_mutex_lock(&g_listener_lock);
-    jobject l = g_listener;
+    jobject l = g_listener[slot];
     pthread_mutex_unlock(&g_listener_lock);
     return l;
 }
 
-static void call_void(jmethodID m)
+static void call_void(int slot, jmethodID m)
 {
     thread_ctx_t *ctx = NULL;
     JNIEnv *env = get_env(&ctx);
-    jobject l = listener_ref();
+    jobject l = listener_ref(slot);
     if (!env || !l) return;
     (*env)->CallVoidMethod(env, l, m);
     check_exception(env);
 }
 
-static void call_data(jmethodID m, const unsigned char *data, int size, int64_t pts_us, int extra, int has_extra)
+static void call_data(int slot, jmethodID m, const unsigned char *data, int size, int64_t pts_us, int extra, int has_extra)
 {
     thread_ctx_t *ctx = NULL;
     JNIEnv *env = get_env(&ctx);
-    jobject l = listener_ref();
+    jobject l = listener_ref(slot);
     if (!env || !l || !ctx || size <= 0) return;
     if (!ctx->array || ctx->cap < size) {
         jsize cap = ctx->cap ? ctx->cap : 64 * 1024;
@@ -114,29 +126,29 @@ static void call_data(jmethodID m, const unsigned char *data, int size, int64_t 
     check_exception(env);
 }
 
-static void cb_opened(void) { call_void(m_opened); }
-static void cb_closed(void) { call_void(m_closed); }
-static void cb_reset(void) { call_void(m_reset); }
+static void cb_opened(int slot) { call_void(slot, m_opened); }
+static void cb_closed(int slot) { call_void(slot, m_closed); }
+static void cb_reset(int slot) { call_void(slot, m_reset); }
 
-static void cb_format(int w, int h, int cx, int cy, int cw, int ch)
+static void cb_format(int slot, int w, int h, int cx, int cy, int cw, int ch)
 {
     thread_ctx_t *ctx = NULL;
     JNIEnv *env = get_env(&ctx);
-    jobject l = listener_ref();
+    jobject l = listener_ref(slot);
     if (!env || !l) return;
     (*env)->CallVoidMethod(env, l, m_format, (jint) w, (jint) h,
                            (jint) cx, (jint) cy, (jint) cw, (jint) ch);
     check_exception(env);
 }
 
-static void cb_video(const unsigned char *d, int n, int64_t pts) { call_data(m_video, d, n, pts, 0, 0); }
-static void cb_audio(const unsigned char *d, int n, int64_t pts, int ct) { call_data(m_audio, d, n, pts, ct, 1); }
+static void cb_video(int slot, const unsigned char *d, int n, int64_t pts) { call_data(slot, m_video, d, n, pts, 0, 0); }
+static void cb_audio(int slot, const unsigned char *d, int n, int64_t pts, int ct) { call_data(slot, m_audio, d, n, pts, ct, 1); }
 
-static void cb_volume(float db)
+static void cb_volume(int slot, float db)
 {
     thread_ctx_t *ctx = NULL;
     JNIEnv *env = get_env(&ctx);
-    jobject l = listener_ref();
+    jobject l = listener_ref(slot);
     if (!env || !l) return;
     (*env)->CallVoidMethod(env, l, m_volume, (jfloat) db);
     check_exception(env);
@@ -146,6 +158,28 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 {
     (void) reserved;
     g_vm = vm;
+    JNIEnv *env = NULL;
+    if ((*vm)->GetEnv(vm, (void **) &env, JNI_VERSION_1_6) != JNI_OK || !env) return JNI_ERR;
+    jclass cls = (*env)->FindClass(env, "com/vantaflow/kairo/cast/ReceiverListener");
+    if (!cls) {
+        (*env)->ExceptionClear(env);
+        LOGE("interface ReceiverListener introuvable");
+        return JNI_ERR;
+    }
+    m_opened = (*env)->GetMethodID(env, cls, "onConnectionOpened", "()V");
+    m_closed = (*env)->GetMethodID(env, cls, "onConnectionClosed", "()V");
+    m_format = (*env)->GetMethodID(env, cls, "onVideoFormat", "(IIIIII)V");
+    m_video = (*env)->GetMethodID(env, cls, "onVideoData", "([BIJ)V");
+    m_audio = (*env)->GetMethodID(env, cls, "onAudioData", "([BIJI)V");
+    m_volume = (*env)->GetMethodID(env, cls, "onAudioVolume", "(F)V");
+    m_reset = (*env)->GetMethodID(env, cls, "onVideoReset", "()V");
+    (*env)->DeleteLocalRef(env, cls);
+    if ((*env)->ExceptionCheck(env) || !m_opened || !m_closed || !m_format || !m_video || !m_audio
+        || !m_volume || !m_reset) {
+        (*env)->ExceptionClear(env);
+        LOGE("methodes ReceiverListener introuvables");
+        return JNI_ERR;
+    }
     return JNI_VERSION_1_6;
 }
 
@@ -156,97 +190,127 @@ Java_com_vantaflow_kairo_cast_NativeReceiver_nativeVersion(JNIEnv *env, jobject 
     return (*env)->NewStringUTF(env, "uxplay-d4b7373");
 }
 
-static void release_listener(JNIEnv *env)
+static int valid_slot(jint slot) { return slot >= 0 && slot < KAIRO_MAX_SLOTS; }
+
+static void release_listener(JNIEnv *env, int slot)
 {
     pthread_mutex_lock(&g_listener_lock);
-    jobject old = g_listener;
-    g_listener = NULL;
+    jobject old = g_listener[slot];
+    g_listener[slot] = NULL;
     pthread_mutex_unlock(&g_listener_lock);
     if (old) (*env)->DeleteGlobalRef(env, old);
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_vantaflow_kairo_cast_NativeReceiver_nativeStart(JNIEnv *env, jobject thiz, jstring jname,
+Java_com_vantaflow_kairo_cast_NativeReceiver_nativeStart(JNIEnv *env, jobject thiz, jint slot, jstring jname,
                                                          jstring jdevice, jstring jkey, jint width,
-                                                         jint height, jobject listener)
+                                                         jint height, jint max_fps, jintArray jports,
+                                                         jobject listener)
 {
     (void) thiz;
-    jclass cls = (*env)->GetObjectClass(env, listener);
-    m_opened = (*env)->GetMethodID(env, cls, "onConnectionOpened", "()V");
-    m_closed = (*env)->GetMethodID(env, cls, "onConnectionClosed", "()V");
-    m_format = (*env)->GetMethodID(env, cls, "onVideoFormat", "(IIIIII)V");
-    m_video = (*env)->GetMethodID(env, cls, "onVideoData", "([BIJ)V");
-    m_audio = (*env)->GetMethodID(env, cls, "onAudioData", "([BIJI)V");
-    m_volume = (*env)->GetMethodID(env, cls, "onAudioVolume", "(F)V");
-    m_reset = (*env)->GetMethodID(env, cls, "onVideoReset", "()V");
-    (*env)->DeleteLocalRef(env, cls);
-    if ((*env)->ExceptionCheck(env)) {
-        (*env)->ExceptionClear(env);
-        LOGE("methodes ReceiverListener introuvables");
+    if (!valid_slot(slot) || !listener || !jports || (*env)->GetArrayLength(env, jports) != 5) {
+        LOGE("nativeStart : arguments invalides (emplacement %d)", (int) slot);
         return JNI_FALSE;
     }
+    jint p[5];
+    (*env)->GetIntArrayRegion(env, jports, 0, 5, p);
+    if ((*env)->ExceptionCheck(env)) { check_exception(env); return JNI_FALSE; }
+    for (int i = 0; i < 5; i++) {
+        if (p[i] <= 0 || p[i] > 65535) {
+            LOGE("[%d] port invalide : %d", (int) slot, (int) p[i]);
+            return JNI_FALSE;
+        }
+    }
+    kairo_ports_t ports = {
+        .tcp_http = (unsigned short) p[0], .tcp_mirror = (unsigned short) p[1],
+        .udp_timing = (unsigned short) p[2], .udp_control = (unsigned short) p[3],
+        .udp_data = (unsigned short) p[4],
+    };
 
-    /* arret d'un serveur precedent avant de remplacer l'ecouteur */
-    kairo_server_stop();
-    release_listener(env);
+    pthread_mutex_lock(&g_api_lock[slot]);
+    /* arret du serveur precedent de CET emplacement (threads termines) avant de
+     * remplacer son ecouteur ; les autres emplacements ne sont pas touches */
+    kairo_server_stop((int) slot);
+    release_listener(env, (int) slot);
     jobject ref = (*env)->NewGlobalRef(env, listener);
+    if (!ref) {
+        check_exception(env);
+        LOGE("[%d] NewGlobalRef a echoue", (int) slot);
+        pthread_mutex_unlock(&g_api_lock[slot]);
+        return JNI_FALSE;
+    }
     pthread_mutex_lock(&g_listener_lock);
-    g_listener = ref;
+    g_listener[slot] = ref;
     pthread_mutex_unlock(&g_listener_lock);
 
-    const char *name = (*env)->GetStringUTFChars(env, jname, NULL);
-    const char *device = (*env)->GetStringUTFChars(env, jdevice, NULL);
-    const char *key = (*env)->GetStringUTFChars(env, jkey, NULL);
+    const char *name = jname ? (*env)->GetStringUTFChars(env, jname, NULL) : NULL;
+    const char *device = jdevice ? (*env)->GetStringUTFChars(env, jdevice, NULL) : NULL;
+    const char *key = jkey ? (*env)->GetStringUTFChars(env, jkey, NULL) : NULL;
+    if (!name || !device || !key) check_exception(env);   /* OutOfMemoryError eventuelle */
     kairo_callbacks_t cb = {
         cb_opened, cb_closed, cb_format, cb_video, cb_audio, cb_volume, cb_reset
     };
-    int rc = (name && device && key) ? kairo_server_start(name, device, key, (int) width, (int) height, &cb) : -1;
+    int rc = (name && device && key)
+        ? kairo_server_start((int) slot, name, device, key, (int) width, (int) height, (int) max_fps, &ports, &cb)
+        : -1;
     if (name) (*env)->ReleaseStringUTFChars(env, jname, name);
     if (device) (*env)->ReleaseStringUTFChars(env, jdevice, device);
     if (key) (*env)->ReleaseStringUTFChars(env, jkey, key);
     if (rc != 0) {
-        release_listener(env);
-        return JNI_FALSE;
+        LOGE("[%d] demarrage du serveur echoue (%d)", (int) slot, rc);
+        release_listener(env, (int) slot);
     }
-    return JNI_TRUE;
+    pthread_mutex_unlock(&g_api_lock[slot]);
+    return rc == 0 ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
-Java_com_vantaflow_kairo_cast_NativeReceiver_nativeStop(JNIEnv *env, jobject thiz)
+Java_com_vantaflow_kairo_cast_NativeReceiver_nativeStop(JNIEnv *env, jobject thiz, jint slot)
 {
     (void) thiz;
-    kairo_server_stop();   /* ne rend la main qu'apres l'arret des threads raop */
-    release_listener(env);
+    if (!valid_slot(slot)) return;
+    pthread_mutex_lock(&g_api_lock[slot]);
+    kairo_server_stop((int) slot);   /* ne rend la main qu'apres l'arret des threads de l'emplacement */
+    release_listener(env, (int) slot);
+    pthread_mutex_unlock(&g_api_lock[slot]);
 }
 
-static jbyteArray txt_to_array(JNIEnv *env, int (*getter)(unsigned char *, int))
+JNIEXPORT void JNICALL
+Java_com_vantaflow_kairo_cast_NativeReceiver_nativeSetAdmit(JNIEnv *env, jobject thiz, jint slot, jboolean allow)
+{
+    (void) env; (void) thiz;
+    if (valid_slot(slot)) kairo_server_set_admit((int) slot, allow ? 1 : 0);
+}
+
+static jbyteArray txt_to_array(JNIEnv *env, int slot, int (*getter)(int, unsigned char *, int))
 {
     unsigned char buf[1300];
-    int n = getter(buf, sizeof(buf));
+    int n = valid_slot(slot) ? getter(slot, buf, sizeof(buf)) : 0;
     jbyteArray arr = (*env)->NewByteArray(env, n);
     if (arr && n > 0) (*env)->SetByteArrayRegion(env, arr, 0, n, (const jbyte *) buf);
     return arr;
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_com_vantaflow_kairo_cast_NativeReceiver_nativeAirplayTxt(JNIEnv *env, jobject thiz)
+Java_com_vantaflow_kairo_cast_NativeReceiver_nativeAirplayTxt(JNIEnv *env, jobject thiz, jint slot)
 {
     (void) thiz;
-    return txt_to_array(env, kairo_server_get_airplay_txt);
+    return txt_to_array(env, (int) slot, kairo_server_get_airplay_txt);
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_com_vantaflow_kairo_cast_NativeReceiver_nativeRaopTxt(JNIEnv *env, jobject thiz)
+Java_com_vantaflow_kairo_cast_NativeReceiver_nativeRaopTxt(JNIEnv *env, jobject thiz, jint slot)
 {
     (void) thiz;
-    return txt_to_array(env, kairo_server_get_raop_txt);
+    return txt_to_array(env, (int) slot, kairo_server_get_raop_txt);
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_vantaflow_kairo_cast_NativeReceiver_nativeRaopServiceName(JNIEnv *env, jobject thiz)
+Java_com_vantaflow_kairo_cast_NativeReceiver_nativeRaopServiceName(JNIEnv *env, jobject thiz, jint slot)
 {
     (void) thiz;
     char buf[12 + 1 + 256];
-    kairo_server_get_raop_service_name(buf, sizeof(buf));
+    buf[0] = 0;
+    if (valid_slot(slot)) kairo_server_get_raop_service_name((int) slot, buf, sizeof(buf));
     return (*env)->NewStringUTF(env, buf);
 }
