@@ -26,7 +26,7 @@ class CastSettings(
         set(value) = store.putString(KEY_NAME, ReceiverName.normalize(value))
 
     var displayMode: DisplayMode
-        get() = DisplayMode.values().firstOrNull { it.name == store.getString(KEY_MODE) } ?: DisplayMode.FILL
+        get() = DisplayMode.values().firstOrNull { it.name == store.getString(KEY_MODE) } ?: DisplayMode.STRETCH
         set(value) = store.putString(KEY_MODE, value.name)
 
     var audioEnabled: Boolean

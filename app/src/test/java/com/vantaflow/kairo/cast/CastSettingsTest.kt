@@ -16,7 +16,7 @@ class CastSettingsTest {
     @Test fun defaults() {
         val s = CastSettings(MapStore(), Random(1))
         assertEquals("Kairo", s.name)
-        assertEquals(DisplayMode.FILL, s.displayMode)
+        assertEquals(DisplayMode.STRETCH, s.displayMode)
         assertTrue(s.audioEnabled)
         assertTrue(s.startOnBoot)
         assertTrue(Regex("^([0-9a-f]{2}:){5}[0-9a-f]{2}$").matches(s.deviceId))
@@ -31,7 +31,7 @@ class CastSettingsTest {
     @Test fun unknownDisplayModeFallsBack() {
         val store = MapStore()
         store.putString("display_mode", "WAT")
-        assertEquals(DisplayMode.FILL, CastSettings(store, Random(1)).displayMode)
+        assertEquals(DisplayMode.STRETCH, CastSettings(store, Random(1)).displayMode)
     }
 
     @Test fun roundTrip() {
