@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\KairoCast.Link\KairoCast.Link.csproj" />
+    <ProjectReference Include="..\KairoCast.Media\KairoCast.Media.csproj" />
   </ItemGroup>
 
 </Project>
