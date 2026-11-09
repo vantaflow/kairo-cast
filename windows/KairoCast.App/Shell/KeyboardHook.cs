@@ -48,7 +48,6 @@ public sealed class KeyboardHook : IDisposable
     private readonly SynchronizationContext _ui;
     private readonly HotkeyFilter _filter = new();
     private nint _hook;
-    private bool _winTracked;
     private volatile bool _replaceWinK = true;
 
     /// <summary>Le panneau est demandé (sur le fil de l'interface).</summary>
@@ -83,8 +82,10 @@ public sealed class KeyboardHook : IDisposable
                 var msg = (int)wParam;
                 var up = msg is WM_KEYUP or WM_SYSKEYUP;
                 var vk = (int)k.vkCode;
-                if (vk is HotkeyFilter.VkLWin or HotkeyFilter.VkRWin) _winTracked = !up;
-                var win = _winTracked || (GetAsyncKeyState(HotkeyFilter.VkLWin) & 0x8000) != 0 || (GetAsyncKeyState(HotkeyFilter.VkRWin) & 0x8000) != 0;
+                // État réel de Win, lu à chaque touche : jamais un état mémorisé. Le relâchement de Win n'arrive pas
+                // au crochet quand le bureau sécurisé est affiché (Win+L, demande administrateur) ; un état mémorisé
+                // resterait alors « enfoncé » et K seul ouvrirait le panneau.
+                var win = (GetAsyncKeyState(HotkeyFilter.VkLWin) & 0x8000) != 0 || (GetAsyncKeyState(HotkeyFilter.VkRWin) & 0x8000) != 0;
                 var alt = (k.flags & 0x20) != 0 || (GetAsyncKeyState(0x12) & 0x8000) != 0;
                 switch (_filter.Decide(vk, up, win, alt, _replaceWinK))
                 {
