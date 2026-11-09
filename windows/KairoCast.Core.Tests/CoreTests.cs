@@ -168,6 +168,19 @@ public class MdnsTests
     }
 
     [Fact]
+    public void TxtNameWinsOverInstanceName()
+    {
+        // La box s'annonce « Kairo (PC) » (nom distinct d'AirPlay) avec n=Kairo.
+        var b = new DnsBuilder();
+        b.Header(answers: 1, additional: 1);
+        int svc = b.Name("_kairocast._tcp.local");
+        b.Rr(12, () => b.NameRef("Kairo (PC)", svc));
+        int inst = b.LastNameOffset;
+        b.NamePtr(inst); b.Rr(16, () => { b.Bytes(3, (byte)'v', (byte)'=', (byte)'1'); b.Bytes(7, (byte)'n', (byte)'=', (byte)'K', (byte)'a', (byte)'i', (byte)'r', (byte)'o'); });
+        Assert.Equal("Kairo", Assert.Single(Mdns.Parse(b.ToArray(), IPAddress.Loopback)).Name);
+    }
+
+    [Fact]
     public void IgnoresGarbage() => Assert.Empty(Mdns.Parse(new byte[] { 1, 2, 3 }, IPAddress.Loopback));
 
     /// <summary>Petit constructeur de réponses DNS pour les tests.</summary>

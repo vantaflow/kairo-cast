@@ -43,6 +43,7 @@ public static class Mdns
             var instances = new List<string>();
             var srv = new Dictionary<string, (string host, int port)>(StringComparer.OrdinalIgnoreCase);
             var hosts = new Dictionary<string, IPAddress>(StringComparer.OrdinalIgnoreCase);
+            var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < count && pos < p.Length; i++)
             {
                 var name = ReadName(p, ref pos);
@@ -63,12 +64,24 @@ public static class Mdns
                 {
                     hosts[name] = new IPAddress(p.AsSpan(rd, 4));
                 }
+                else if (type == 16)
+                {
+                    // TXT : « n=<nom de la box> »
+                    for (int t = rd; t < rd + len;)
+                    {
+                        int l = p[t];
+                        var kv = Encoding.UTF8.GetString(p, t + 1, Math.Min(l, rd + len - t - 1));
+                        if (kv.StartsWith("n=")) names[name] = kv[2..];
+                        t += l + 1;
+                    }
+                }
                 pos = rd + len;
             }
             foreach (var inst in instances)
             {
                 // Le nom de la box peut contenir des points : on retire seulement le suffixe du service.
-                var label = inst.EndsWith('.' + LinkProtocol.ServiceType, StringComparison.OrdinalIgnoreCase)
+                var label = names.TryGetValue(inst, out var n) && n.Length > 0 ? n
+                    : inst.EndsWith('.' + LinkProtocol.ServiceType, StringComparison.OrdinalIgnoreCase)
                     ? inst[..^(LinkProtocol.ServiceType.Length + 1)]
                     : inst.Split('.')[0];
                 if (srv.TryGetValue(inst, out var s))

@@ -32,7 +32,11 @@ class MdnsAdvertiser(ctx: Context) {
         }
         add("_airplay._tcp", name, port, airplayTxt)
         add("_raop._tcp", raopName, port, raopTxt)
-        if (linkPort > 0) add(LinkProtocol.SERVICE_TYPE, name, linkPort, mapOf("v" to LinkProtocol.VERSION.toString()))
+        // Nom distinct : Android refuse le même nom d'instance que _airplay (NameConflictException).
+        // Le nom à afficher sur le PC est dans le TXT « n ».
+        if (linkPort > 0) {
+            add(LinkProtocol.SERVICE_TYPE, "$name (PC)", linkPort, mapOf("v" to LinkProtocol.VERSION.toString(), "n" to name))
+        }
     }
 
     private fun add(type: String, name: String, port: Int, txt: Map<String, String>) {
