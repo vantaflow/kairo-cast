@@ -45,18 +45,18 @@ public static class Ffmpeg
         return (w & ~1, h & ~1);
     }
 
-    /// <summary>Débit en kbit/s : 12 Mbit/s en 1080p60, borné entre 4 et 30 Mbit/s.</summary>
+    /// <summary>Débit en kbit/s : 20 Mbit/s en 1080p60 (texte net en réseau local), borné entre 8 et 40 Mbit/s.</summary>
     public static int Bitrate(int w, int h, int fps)
     {
-        long k = (long)w * h * fps / 10368;
-        return (int)Math.Clamp((k + 500) / 1000 * 1000, 4000, 30000);
+        long k = (long)w * h * fps / 6220;
+        return (int)Math.Clamp((k + 500) / 1000 * 1000, 8000, 40000);
     }
 
     static string EncoderOptions(string encoder) => encoder switch
     {
-        "h264_nvenc" => "-preset p1 -tune ull -zerolatency 1 -rc cbr",
-        "h264_qsv" => "-preset veryfast -low_power 0 -async_depth 1",
-        "h264_amf" => "-usage ultralowlatency -quality speed -rc cbr",
+        "h264_nvenc" => "-preset p4 -tune ull -zerolatency 1 -rc cbr",
+        "h264_qsv" => "-preset medium -low_power 0 -async_depth 1",
+        "h264_amf" => "-usage ultralowlatency -quality balanced -rc cbr",
         _ => "-scenario display_remoting -rate_control cbr",
     };
 
@@ -64,10 +64,9 @@ public static class Ffmpeg
     {
         var inv = CultureInfo.InvariantCulture;
         string b = bitrateKbps.ToString(inv);
-        // ddagrab sort des images D3D11 ; hwdownload + format pour les encodeurs qui veulent de la mémoire système.
-        string scale = encoder is "h264_nvenc" or "h264_amf" or "h264_qsv" or "h264_mf"
-            ? $"hwdownload,format=bgra,scale={width}:{height}:flags=bicubic,format=nv12"
-            : $"hwdownload,format=bgra,scale={width}:{height},format=nv12";
+        // ddagrab sort des images D3D11 ; hwdownload pour les encodeurs qui veulent de la mémoire système.
+        // Lanczos : réduction la plus nette pour le texte (n'agit que si la box impose une taille plus petite).
+        string scale = $"hwdownload,format=bgra,scale={width}:{height}:flags=lanczos,format=nv12";
         return string.Join(' ',
             "-hide_banner -loglevel error -nostdin",
             $"-f lavfi -i ddagrab=output_idx={output}:framerate={fps}:draw_mouse=1",

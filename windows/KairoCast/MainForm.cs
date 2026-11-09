@@ -65,7 +65,7 @@ sealed class MainForm : Form
         for (int i = 0; i < Screen.AllScreens.Length; i++)
         {
             var s = Screen.AllScreens[i];
-            screens.Items.Add($"Écran {i + 1}{(s.Primary ? " (principal)" : "")} — {s.Bounds.Width}×{s.Bounds.Height}");
+            screens.Items.Add($"Écran {i + 1}{(s.Primary ? " (principal)" : "")} — {ScreenSize.Physical(s).Width}×{ScreenSize.Physical(s).Height}");
         }
         screens.SelectedIndex = Math.Max(0, Array.FindIndex(Screen.AllScreens, s => s.Primary));
         manual.Text = Prefs.LastAddress ?? "";
@@ -139,7 +139,7 @@ sealed class MainForm : Form
         try
         {
             int idx = Math.Max(0, screens.SelectedIndex);
-            await s.StartAsync(target, idx, Screen.AllScreens[idx].Bounds, sound.Checked, fluidity.SelectedIndex == 0 ? 60 : 30);
+            await s.StartAsync(target, idx, new Rectangle(Point.Empty, ScreenSize.Physical(Screen.AllScreens[idx])), sound.Checked, fluidity.SelectedIndex == 0 ? 60 : 30);
             Prefs.LastAddress = target.Address.ToString();
         }
         catch (OperationCanceledException)

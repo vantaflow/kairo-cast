@@ -272,9 +272,9 @@ public class MediaTests
     }
 
     [Theory]
-    [InlineData(1920, 1080, 60, 12000)]
-    [InlineData(3840, 2160, 60, 30000)]
-    [InlineData(1280, 720, 30, 4000)]
+    [InlineData(1920, 1080, 60, 20000)]
+    [InlineData(3840, 2160, 60, 40000)]
+    [InlineData(1280, 720, 30, 8000)]
     public void BitrateScalesWithPixels(int w, int h, int fps, int expected)
     {
         Assert.Equal(expected, Ffmpeg.Bitrate(w, h, fps));
