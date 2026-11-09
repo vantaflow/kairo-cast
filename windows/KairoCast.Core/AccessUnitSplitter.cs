@@ -13,18 +13,27 @@ public sealed class AccessUnitSplitter
     {
         var units = new List<byte[]>();
         foreach (var x in data) buf.Add(x);
+        int first = FindAud(0);
+        if (first < 0) return units;
+        if (first > 0) { buf.RemoveRange(0, first); scanFrom = 0; } // octets avant le premier AUD
         while (true)
         {
-            int first = FindAud(0);
-            if (first < 0) { scanFrom = Math.Max(0, buf.Count - 4); break; }
-            if (first > 0) { buf.RemoveRange(0, first); scanFrom = 0; continue; } // octets avant le premier AUD
             int next = FindAud(Math.Max(scanFrom, 4));
             if (next < 0) { scanFrom = Math.Max(4, buf.Count - 4); break; }
+            // Une unité sans tranche d'image (AUD en double, SPS/PPS seuls) est fusionnée avec la suivante.
+            if (!HasSlice(next)) { scanFrom = next + 4; continue; }
             units.Add(buf.GetRange(0, next).ToArray());
             buf.RemoveRange(0, next);
             scanFrom = 0;
         }
         return units;
+    }
+
+    bool HasSlice(int end)
+    {
+        for (int i = 0; i + 3 < end; i++)
+            if (buf[i] == 0 && buf[i + 1] == 0 && buf[i + 2] == 1 && (buf[i + 3] & 0x1F) is 1 or 5) return true;
+        return false;
     }
 
     /// <summary>Dernière unité en attente (fin de flux), ou null.</summary>

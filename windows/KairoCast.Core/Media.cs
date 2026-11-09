@@ -57,7 +57,7 @@ public static class Ffmpeg
         "h264_nvenc" => "-preset p1 -tune ull -zerolatency 1 -rc cbr",
         "h264_qsv" => "-preset veryfast -low_power 0 -async_depth 1",
         "h264_amf" => "-usage ultralowlatency -quality speed -rc cbr",
-        _ => "-scenario display_remoting -rate_control cbr -hw_encoding 0",
+        _ => "-scenario display_remoting -rate_control cbr",
     };
 
     public static string Arguments(string encoder, int output, int width, int height, int fps, int bitrateKbps)
@@ -73,7 +73,7 @@ public static class Ffmpeg
             $"-f lavfi -i ddagrab=output_idx={output}:framerate={fps}:draw_mouse=1",
             $"-vf {scale}",
             $"-c:v {encoder} {EncoderOptions(encoder)}",
-            $"-b:v {b}k -maxrate {b}k -bufsize {bitrateKbps / 2}k -g {fps * 2} -bf 0 -profile:v high",
+            $"-b:v {b}k -maxrate {b}k -bufsize {bitrateKbps / 2}k -g {fps * 2} -bf 0",
             "-bsf:v h264_metadata=aud=insert",
             "-flush_packets 1 -f h264 -");
     }

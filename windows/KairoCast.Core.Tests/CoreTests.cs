@@ -84,6 +84,18 @@ public class AccessUnitSplitterTests
     }
 
     [Fact]
+    public void MergesUnitsWithoutSlice()
+    {
+        var s = new AccessUnitSplitter();
+        // AUD en double (Media Foundation + h264_metadata) puis SPS seul : tout va dans l'image suivante.
+        var stream = Aud.Concat(Aud).Concat(Nal(0x67)).Concat(Aud).Concat(Nal(0x65)).Concat(Aud).Concat(Nal(0x41)).Concat(Aud).ToArray();
+        var units = s.Push(stream).ToList();
+        Assert.Equal(2, units.Count);
+        Assert.Equal(Aud.Concat(Aud).Concat(Nal(0x67)).Concat(Aud).Concat(Nal(0x65)).ToArray(), units[0]);
+        Assert.Equal(Aud.Concat(Nal(0x41)).ToArray(), units[1]);
+    }
+
+    [Fact]
     public void FlushReturnsLastUnit()
     {
         var s = new AccessUnitSplitter();
