@@ -158,7 +158,8 @@ class ReceiverService : Service() {
         val cs = synchronized(controllers) { controllers.toSortedMap() }
         // D'abord couper les autres, puis rendre audible l'élu : jamais deux sons à la fois.
         cs.forEach { (s, c) -> if (s != sel) c.setAudioMuted(true) }
-        cs[sel]?.setAudioMuted(false)
+        // Aucune source audible (la dernière vient de se fermer) : TreeMap refuse une clé nulle.
+        if (sel != null) cs[sel]?.setAudioMuted(false)
     }
 
     private fun refreshUi() {
