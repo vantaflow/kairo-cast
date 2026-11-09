@@ -27,7 +27,7 @@ Une autorisation est à accorder une fois pour que la recopie s'ouvre par-dessus
 
 ### Sur le PC Windows
 
-Télécharger **[KairoCast.exe](https://github.com/vantaflow/kairo-cast/releases/latest/download/KairoCast.exe)** et le lancer : rien à installer pour dupliquer l'écran. Seul le mode **Étendre** a besoin d'un pilote d'écran virtuel, installé une seule fois à la première utilisation (voir [Dupliquer ou Étendre](#dupliquer-ou-étendre)).
+Télécharger **[KairoCast.exe](https://github.com/vantaflow/kairo-cast/releases/latest/download/KairoCast.exe)** et le lancer : rien à installer pour recopier l'écran. En option, un pilote d'écran virtuel fait de la TV un vrai écran de Windows pendant le partage, pour choisir **Dupliquer** ou **Étendre** avec Win+P (voir [Dupliquer ou Étendre](#dupliquer-ou-étendre)).
 
 - **Prérequis** : Windows 10 version 1903 ou plus récent, ou Windows 11, 64 bits.
 - L'exécutable n'est pas signé : SmartScreen affiche un avertissement la première fois, cliquer sur **Informations complémentaires › Exécuter quand même**.
@@ -47,12 +47,12 @@ Windows ne sait pas envoyer son écran à un récepteur AirPlay, et une appli An
 
 1. Lancer **KairoCast.exe** : l'appli se place près de l'horloge (zone de notification).
 2. Appuyer sur **Win+K** (ou cliquer sur l'icône) : le panneau « Partager l'écran vers… » liste les box Kairo du réseau.
-3. Choisir **Dupliquer** ou **Étendre** en haut du panneau, puis cliquer sur **Partager** à côté de la box. Le même bouton arrête le partage.
+3. Cliquer sur **Partager** à côté de la box. Le même bouton arrête le partage. Avec l'écran virtuel, **Win+P** (ou les boutons **Dupliquer** / **Étendre** du panneau) choisit ce que montre la TV pendant le partage.
 
 Fenêtre principale (clic sur l'icône) :
 
 - **Box Kairo** : les box trouvées automatiquement sur le réseau. Si une box n'apparaît pas (VPN, routeur qui bloque la découverte, autre sous-réseau), le lien **Box introuvable ? Ajouter par adresse IP** permet de la saisir (l'adresse est affichée sur l'accueil de Kairo Cast).
-- **Mode** : **Dupliquer** (par défaut) ou **Étendre**, voir ci-dessous. En mode Dupliquer, si le PC a plusieurs écrans, **Écran à recopier** choisit lequel (l'écran principal par défaut).
+- **Écran de la TV** : état de l'écran virtuel (bouton **Installer** ou **Activer l'écran virtuel…** s'il manque), case pour s'en passer, et, si le PC a plusieurs écrans, **Écran à recopier** (l'écran principal par défaut).
 - **Qualité** : 1080p 30 i/s (par défaut, le plus sûr), 1080p 60 i/s (plus fluide) ou 1440p 30 i/s (plus net). L'encodage utilise la carte graphique ; l'encodeur utilisé s'affiche sous l'état.
 - **Envoyer le son** : le son du PC passe sur la TV.
 - **Remplacer Win+K** : Win+K ouvre le panneau Kairo, avec un lien **Autres écrans (Windows)…** vers le panneau natif ; décoché, le raccourci devient **Win+Alt+K**.
@@ -63,16 +63,22 @@ Journal en cas de problème : `%LOCALAPPDATA%\KairoCast\log.txt`.
 
 ### Dupliquer ou Étendre
 
-Comme le panneau Win+K natif de Windows :
+Sans pilote, Kairo Cast recopie l'écran principal (ou celui choisi) : l'affichage de Windows n'est jamais modifié.
 
-- **Dupliquer** : la TV affiche ce que montre un écran du PC (l'écran principal, ou celui choisi dans la fenêtre principale).
-- **Étendre** : la TV devient un **deuxième écran**, placé à droite de l'écran principal. On y fait glisser des fenêtres (une vidéo, une présentation) tout en gardant son propre écran. La définition de cet écran est celle envoyée à la box (1920×1080, ou 2560×1440 avec la qualité 1440p). Changer de mode pendant un partage le relance aussitôt dans le nouveau mode.
+Avec le pilote open source **[Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver)** (signé, licence MIT), la TV devient **un écran de Windows pendant le partage**, comme un écran branché :
 
-Windows ne sait pas créer seul un écran supplémentaire : le mode Étendre s'appuie sur le pilote open source **[Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver)** (signé, licence MIT).
+- **Au début du partage**, Kairo Cast note la disposition actuelle des écrans, ajoute l'écran de la TV **en recopie** de l'écran principal (Dupliquer) et ne touche à rien d'autre : une TV déjà branchée en HDMI en recopie le reste.
+- **Pendant le partage**, c'est Windows qui décide : **Win+P › Dupliquer**, **Étendre** (la TV devient un deuxième bureau, à la définition envoyée à la box) ou **Deuxième écran uniquement**, ou **Paramètres › Système › Écran**. L'image envoyée à la box suit ces changements sans couper la session. Les boutons **Dupliquer** / **Étendre** du panneau Win+K font la même chose pour la TV seule (les autres écrans ne bougent pas).
+- **À la fin** (arrêt, erreur, box déconnectée, fermeture de l'appli ou de la session Windows), la disposition d'avant est remise **à l'identique** et les fenêtres restées sur la TV reviennent sur l'écran principal. Si l'appli plante, elle le fait à son lancement suivant (la disposition est gardée sur disque jusque-là).
+- **Hors partage, l'écran virtuel n'existe pas pour Windows** : le pilote est désactivé, Win+P et les branchements d'écrans ne le voient pas.
 
-- **Installation, une seule fois** : au premier partage en mode Étendre, Kairo Cast propose de l'installer. Il le télécharge avec **winget** (paquet `VirtualDrivers.Virtual-Display-Driver`, sans droits d'administrateur), puis Windows affiche **une seule demande d'autorisation** (UAC) pour installer le pilote. Cette étape ajoute aussi le certificat de l'éditeur du pilote (SignPath Foundation) aux éditeurs approuvés, pour éviter une seconde fenêtre de Windows, et écrit sa configuration dans `C:\VirtualDisplayDriver\vdd_settings.xml` (un seul écran virtuel). En ligne de commande : `KairoCast.exe --install-virtual-display`.
-- **Ensuite, aucune demande d'autorisation** : l'écran virtuel reste installé mais **éteint** hors partage. Kairo Cast l'allume au début d'un partage en mode Étendre et l'éteint à l'arrêt (par les réglages d'affichage de Windows, comme **Paramètres › Système › Écran**, ce qui ne demande pas de droits d'administrateur) ; les fenêtres qui s'y trouvaient reviennent sur l'écran principal. Si l'appli a été arrêtée brutalement pendant un partage, l'écran virtuel est éteint à son prochain démarrage.
-- **Désinstallation** : dans le **Gestionnaire de périphériques › Cartes graphiques**, clic droit sur **Virtual Display Driver › Désinstaller l'appareil**, en cochant **Tenter de supprimer le pilote de cet appareil** ; puis `winget uninstall --id VirtualDrivers.Virtual-Display-Driver -e` pour supprimer le paquet téléchargé. On peut aussi supprimer le dossier `C:\VirtualDisplayDriver` et, dans `certlm.msc › Éditeurs approuvés`, le certificat « SignPath Foundation ».
+Installation, seulement sur clic (bouton **Installer l'écran virtuel…** de la fenêtre principale ou lien du panneau), jamais automatiquement :
+
+- Kairo Cast télécharge le pilote avec **winget** (paquet `VirtualDrivers.Virtual-Display-Driver`, sans droits d'administrateur), puis Windows affiche **une seule demande d'autorisation** (UAC). Cette étape installe le pilote, ajoute le certificat de son éditeur (SignPath Foundation) aux éditeurs approuvés (sinon Windows ouvrirait une seconde fenêtre), écrit sa configuration dans `C:\VirtualDisplayDriver\vdd_settings.xml` (un seul écran virtuel), le **désactive** aussitôt et crée deux tâches planifiées `\KairoCast\VirtualDisplayOn` / `Off` qui ne font que `pnputil /enable-device` / `/disable-device` sur ce périphérique. L'affichage est sauvegardé avant et remis tel quel après.
+- Si le pilote est déjà installé (désactivé ou non), le bouton devient **Activer l'écran virtuel…** : même demande d'autorisation, sans téléchargement.
+- **Ensuite, aucune demande d'autorisation** : l'appli lance ces tâches au début et à la fin de chaque partage. Il faut un compte administrateur du PC.
+- En ligne de commande : `KairoCast.exe --setup-virtual-display`.
+- **Désinstallation** : `schtasks /delete /tn \KairoCast\VirtualDisplayOn /f` et `schtasks /delete /tn \KairoCast\VirtualDisplayOff /f` (invite de commandes administrateur) ; **Gestionnaire de périphériques › Cartes graphiques › Virtual Display Driver › Désinstaller l'appareil**, en cochant **Tenter de supprimer le pilote de cet appareil** ; puis `winget uninstall --id VirtualDrivers.Virtual-Display-Driver -e`. On peut aussi supprimer le dossier `C:\VirtualDisplayDriver` et, dans `certlm.msc › Éditeurs approuvés`, le certificat « SignPath Foundation ».
 
 ## Plusieurs sources (mosaïque)
 
@@ -111,10 +117,10 @@ Retour ramène à l'accueil ; la recopie continue et **Reprendre la recopie** la
 - **Image saccadée** : choisir 1080p 30 i/s sur le PC, rapprocher la box du routeur ou la brancher en Ethernet.
 - **Pas de son** : vérifier **Son** sur la box et **Envoyer le son** sur le PC ; avec plusieurs sources, sélectionner la tuile qui doit être audible.
 - **La recopie ne s'ouvre pas au-dessus d'une autre appli** : accorder **Afficher par-dessus les autres applis**.
-- **Mode Étendre : « Installation annulée »** : la demande d'autorisation de Windows a été refusée ; relancer un partage en mode Étendre pour la reproposer. Sur un PC géré par une entreprise, l'installation de pilotes peut être interdite : rester en Dupliquer.
-- **Mode Étendre : « winget est introuvable »** : installer **App Installer** depuis le Microsoft Store (winget est inclus d'office dans Windows 11 et Windows 10 récent).
-- **Mode Étendre : « présent mais inactif »** : le pilote a été désactivé ; dans le Gestionnaire de périphériques, **Cartes graphiques › Virtual Display Driver › Activer l'appareil**. Si l'écran virtuel n'apparaît pas juste après l'installation, redémarrer le PC.
-- **Un écran fantôme reste après un partage Étendre** : relancer Kairo Cast (il éteint l'écran virtuel au démarrage), ou dans **Paramètres › Système › Écran**, sélectionner l'écran virtuel et choisir **Déconnecter cet écran**. `KairoCast.exe --displays` liste les écrans vus par l'appli.
+- **La TV montre un bureau vide après un plantage** (ou un écran fantôme reste après un partage) : appuyer sur **Win+P › Dupliquer** ; relancer Kairo Cast remet aussi la disposition d'avant le partage et désactive l'écran virtuel. En dernier recours : **Gestionnaire de périphériques › Cartes graphiques › Virtual Display Driver › Désactiver l'appareil**.
+- **Écran virtuel : « Annulé : Windows n'a pas reçu l'autorisation »** : la demande UAC a été refusée ; recliquer sur **Installer** (ou **Activer**) **l'écran virtuel…**. Sur un PC géré par une entreprise, l'installation de pilotes peut être interdite : décocher l'écran virtuel, la TV recopie alors l'écran comme avant.
+- **Écran virtuel : « winget est introuvable »** : installer **App Installer** depuis le Microsoft Store (winget est inclus d'office dans Windows 11 et Windows 10 récent).
+- **Écran virtuel : « le pilote ne s'est pas activé »** : redémarrer le PC si le pilote vient d'être installé ; sinon recliquer sur **Activer l'écran virtuel…**. `KairoCast.exe --displays` liste, sans rien modifier, les écrans et l'état du pilote ; les lignes « Écran virtuel : » du journal détaillent chaque étape.
 
 ## Compilation
 
@@ -145,7 +151,7 @@ La CI GitHub compile les deux à chaque envoi (artefacts `kairo-cast-release` et
 ### Fonctionnement
 
 - **AirPlay** : serveur natif basé sur UxPlay, un par source, annoncé en mDNS (`_airplay._tcp`, `_raop._tcp`). Vidéo H.264 décodée par le matériel de la box, son AAC.
-- **Kairo Link** (Windows) : la box annonce `_kairocast._tcp` ; le PC capture l'écran (Windows.Graphics.Capture : l'écran choisi en Dupliquer, l'écran virtuel en Étendre), l'encode en H.264 par la carte graphique et l'envoie en TCP, avec le son en PCM. Comme AirPlay sans code, Kairo Link accepte n'importe quel appareil du réseau local.
+- **Kairo Link** (Windows) : la box annonce `_kairocast._tcp` ; le PC capture l'écran (Windows.Graphics.Capture : l'écran de la TV quand l'écran virtuel est là, sinon l'écran choisi), l'encode en H.264 par la carte graphique et l'envoie en TCP, avec le son en PCM. Comme AirPlay sans code, Kairo Link accepte n'importe quel appareil du réseau local.
 
 ## Licence et crédits
 
@@ -154,8 +160,7 @@ GPL-3.0.
 - [UxPlay](https://github.com/FDH2/UxPlay) (GPL-3.0) : serveur AirPlay sur lequel repose le récepteur.
 - [libplist](https://github.com/libimobiledevice/libplist) (LGPL-2.1).
 - [NAudio](https://github.com/naudio/NAudio) (MIT) et [Vortice.Windows](https://github.com/amerkoleci/Vortice.Windows) (MIT) : capture audio et vidéo de l'appli Windows.
-- [Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver) (MIT, © 2024 Virtual Display, Mike Rodriguez « MikeTheTech » et contributeurs ; pilote signé par SignPath Foundation) : écran virtuel du mode Étendre. Il n'est pas inclus dans KairoCast.exe : il est téléchargé par winget depuis ses publications officielles, à la demande de l'utilisateur.
-
+- [Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver) (MIT, © 2024 Virtual Display, Mike Rodriguez « MikeTheTech » et contributeurs ; pilote signé par SignPath Foundation) : écran virtuel qui fait de la TV un écran de Windows (Dupliquer / Étendre). Il n'est pas inclus dans KairoCast.exe : il est téléchargé par winget depuis ses publications officielles, à la demande de l'utilisateur.
 - OpenSSL 1.1.1 (licence OpenSSL/SSLeay), fourni par le paquet prefab `com.android.ndk.thirdparty:openssl` et lié dynamiquement.
 
 GPL-3.0 et OpenSSL 1.1.1 : la licence OpenSSL/SSLeay n'est pas considérée comme compatible avec la GPL, sauf à bénéficier d'une exception pour les bibliothèques du système. Ici, OpenSSL est une bibliothèque externe fournie sous forme de paquet et liée dynamiquement, pas une bibliothèque du système Android ; cette situation est signalée telle quelle, sans exception de licence ajoutée.

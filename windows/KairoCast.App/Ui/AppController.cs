@@ -22,8 +22,9 @@ public sealed class AppController : IDisposable
     private string _discoveryState = "Recherche des box…";
     private string? _sessionState;
     private readonly EarlyEndGate<StreamSession> _gate = new();
-    /// <summary>L'écran virtuel a été allumé pour la session en cours (ou en démarrage).</summary>
+    /// <summary>La session en cours (ou en démarrage) utilise l'écran virtuel.</summary>
     private bool _virtualOn;
+    private TvLayout _tvLayout = TvLayout.Off;
 
     public AppSettings Settings { get; }
     /// <summary>Box à afficher : manuelles, et découvertes sur un réseau actuel du PC.</summary>
@@ -48,42 +49,110 @@ public sealed class AppController : IDisposable
     public string EncoderText { get; private set; } = "";
     public event Action? Changed;
 
-    /// <summary>Demande à l'utilisateur s'il accepte d'installer le pilote d'écran virtuel (mode Étendre). Fil de l'interface.</summary>
-    public Func<bool>? ConfirmVirtualDisplayInstall { get; set; }
+    /// <summary>
+    /// Demande à l'utilisateur s'il accepte d'installer (NotInstalled) ou d'activer (NeedsSetup) l'écran virtuel.
+    /// Fil de l'interface. Jamais appelé sans clic de l'utilisateur.
+    /// </summary>
+    public Func<VddStatus, bool>? ConfirmVirtualDisplaySetup { get; set; }
 
-    /// <summary>Écrans réels allumés, proposés en mode Dupliquer (le principal d'abord).</summary>
+    /// <summary>État du pilote d'écran virtuel ; null tant qu'il n'a pas été lu.</summary>
+    public VddStatus? VirtualStatus { get; private set; }
+
+    /// <summary>Installation ou activation du pilote en cours.</summary>
+    public bool VirtualSetupRunning { get; private set; }
+
+    /// <summary>Le prochain partage utilisera l'écran virtuel (TV = écran de Windows, Win+P).</summary>
+    public bool UsesVirtualDisplay => Settings.UseVirtualDisplay && VirtualStatus == VddStatus.Ready;
+
+    /// <summary>Ce que Windows affiche sur la TV pendant un partage avec l'écran virtuel (Off sinon).</summary>
+    public TvLayout TvLayout => _virtualOn && _session != null ? _tvLayout : TvLayout.Off;
+
+    /// <summary>Écrans réels allumés, proposés comme écran à recopier (le principal d'abord).</summary>
     public IReadOnlyList<DisplayInfo> Screens()
     {
         try { return DisplayLogic.DuplicateCandidates(DisplayNative.List()); }
         catch (Exception e) { Log.Warn($"Liste des écrans : {Log.Describe(e)}"); return Array.Empty<DisplayInfo>(); }
     }
 
-    /// <summary>Change le mode ; un partage en cours redémarre aussitôt dans le nouveau mode.</summary>
-    public void SetShareMode(ShareMode mode)
+    /// <summary>Active ou non l'écran virtuel pour les prochains partages.</summary>
+    public void SetUseVirtualDisplay(bool on)
     {
-        if (Settings.ShareMode == mode) return;
-        Settings.ShareMode = mode;
+        if (Settings.UseVirtualDisplay == on) return;
+        Settings.UseVirtualDisplay = on;
         Settings.Save();
-        Log.Info($"Mode de partage : {mode}");
-        RestartIfActive();
+        Log.Info($"Écran virtuel pour la TV : {(on ? "oui" : "non")}");
         Changed?.Invoke();
     }
 
-    /// <summary>Change l'écran recopié en mode Dupliquer (null = principal).</summary>
+    /// <summary>Change l'écran recopié (null = principal). Pris en compte au prochain partage.</summary>
     public void SetDuplicateScreen(string? deviceName)
     {
         if (Settings.DuplicateScreen == deviceName) return;
         Settings.DuplicateScreen = deviceName;
         Settings.Save();
         Log.Info($"Écran à recopier : {deviceName ?? "principal"}");
-        if (Settings.ShareMode == ShareMode.Duplicate) RestartIfActive();
         Changed?.Invoke();
     }
 
-    private void RestartIfActive()
+    /// <summary>
+    /// Raccourci du panneau pendant un partage : la TV recopie l'écran (Dupliquer) ou devient un écran à part (Étendre).
+    /// Comme Win+P, mais seule la TV change : un clone HDMI existant n'est pas touché.
+    /// </summary>
+    public async Task SetTvLayoutAsync(TvLayout layout)
     {
-        var box = Active;
-        if (box != null && !Busy && _session != null) _ = ShareAsync(box);
+        if (TvLayout == TvLayout.Off || TvLayout == layout) return;
+        var screen = Settings.DuplicateScreen;
+        try { await Task.Run(() => VirtualDisplay.Screen.SetLayout(layout, screen)); }
+        catch (Exception e)
+        {
+            Log.Error($"Écran virtuel : disposition {layout} refusée", e);
+            _sessionState = $"Windows refuse ce mode d'affichage : {e.Message}";
+        }
+        OnDisplaysChanged();
+    }
+
+    /// <summary>Relit l'état du pilote (lecture seule, hors du fil de l'interface).</summary>
+    public async Task RefreshVirtualStatusAsync()
+    {
+        try { VirtualStatus = await Task.Run(VirtualDisplay.Screen.Status); }
+        catch (Exception e) { Log.Warn($"Écran virtuel : état illisible : {Log.Describe(e)}"); }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Installe ou active le pilote, sur clic de l'utilisateur et avec son accord (UAC).</summary>
+    public async Task SetupVirtualDisplayAsync()
+    {
+        if (VirtualSetupRunning || Busy || _session != null) return;
+        var status = VirtualStatus ?? VddStatus.NotInstalled;
+        if (status == VddStatus.Ready) return;
+        if (ConfirmVirtualDisplaySetup?.Invoke(status) != true) return;
+        VirtualSetupRunning = true;
+        Changed?.Invoke();
+        void Status(string st) => _ui.Post(_ => { _sessionState = st; Changed?.Invoke(); }, null);
+        string? err;
+        try { err = await Task.Run(() => VirtualDisplay.Setup(Status)); }
+        catch (Exception e) { Log.Error("Écran virtuel : installation impossible", e); err = $"Installation impossible : {e.Message}"; }
+        VirtualSetupRunning = false;
+        await RefreshVirtualStatusAsync();
+        _sessionState = err ?? (VirtualStatus == VddStatus.Ready
+            ? "Écran virtuel prêt : pendant un partage, Win+P choisit Dupliquer ou Étendre"
+            : "Le pilote n'est pas prêt (voir le journal)");
+        Changed?.Invoke();
+    }
+
+    private void OnDisplaysChanged()
+    {
+        var s = _session;
+        if (_virtualOn && s != null)
+        {
+            Task.Run(() =>
+            {
+                s.FollowTarget();
+                var layout = VirtualDisplay.Screen.Layout();
+                _ui.Post(_ => { _tvLayout = layout; Changed?.Invoke(); }, null);
+            });
+        }
+        else Changed?.Invoke();
     }
 
     public AppController(SynchronizationContext ui, AppSettings settings)
@@ -96,14 +165,18 @@ public sealed class AppController : IDisposable
 
     public void Start()
     {
-        // Arrêt brutal pendant un partage Étendre : l'écran virtuel est resté allumé, on l'éteint.
-        if (Settings.VirtualDisplayOn)
+        // Plantage pendant un partage avec l'écran virtuel : disposition d'avant restaurée (marqueur sur disque).
+        _ = Task.Run(() =>
         {
-            Log.Info("Écran virtuel resté allumé par une session précédente : extinction");
-            Task.Run(VirtualDisplay.Deactivate);
-            Settings.VirtualDisplayOn = false;
-            Settings.Save();
-        }
+            try { VirtualDisplay.Screen.Recover(); }
+            catch (Exception e) { Log.Warn($"Écran virtuel : remise en ordre au lancement : {Log.Describe(e)}"); }
+        }).ContinueWith(_ => _ui.Post(_ => _ = RefreshVirtualStatusAsync(), null), TaskScheduler.Default);
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => _ui.Post(_ => OnDisplaysChanged(), null);
+        // Fermeture de session ou arrêt de Windows pendant un partage : la disposition est restaurée tout de suite.
+        Microsoft.Win32.SystemEvents.SessionEnding += (_, _) =>
+        {
+            try { VirtualDisplay.EmergencyStop(); } catch (Exception e) { Log.Warn($"Écran virtuel : {Log.Describe(e)}"); }
+        };
         // Changement de réseau : la liste visible change (box de l'ancien réseau masquées).
         System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += (_, _) => _ui.Post(_ => Changed?.Invoke(), null);
         foreach (var m in Settings.ManualBoxes.ToList())
@@ -189,11 +262,6 @@ public sealed class AppController : IDisposable
         {
             var opt = Settings.ToStreamOptions();
             var target = await PrepareTargetAsync(opt, cts.Token);
-            if (target == null)
-            {
-                Active = null;
-                return;
-            }
             var s = await StreamSession.StartAsync(box, opt, cts.Token, target: target,
                 onEnded: e => _ui.Post(_ => _gate.Ended(e, OnEnded), null),
                 onStatus: st => _ui.Post(_ =>
@@ -228,51 +296,35 @@ public sealed class AppController : IDisposable
     }
 
     /// <summary>
-    /// Écran à capturer. Dupliquer : l'écran choisi ou le principal. Étendre : installe le pilote au besoin (avec accord),
-    /// puis allume l'écran virtuel à la définition envoyée à la box. null = partage abandonné (état déjà renseigné).
+    /// Écran à capturer. Avec l'écran virtuel : disposition sauvegardée, TV ajoutée en recopie, puis Win+P décide ;
+    /// la capture suit toujours la TV. Sans : l'écran choisi ou le principal, sans toucher à l'affichage.
     /// </summary>
-    private async Task<CaptureTarget?> PrepareTargetAsync(Media.StreamOptions opt, CancellationToken ct)
+    private async Task<CaptureTarget> PrepareTargetAsync(Media.StreamOptions opt, CancellationToken ct)
     {
-        if (Settings.ShareMode == ShareMode.Duplicate)
+        if (UsesVirtualDisplay)
         {
-            if (string.IsNullOrEmpty(Settings.DuplicateScreen)) return CaptureTarget.Primary;
-            var name = DisplayLogic.DuplicateTarget(DisplayNative.List(), Settings.DuplicateScreen);
-            return name == null ? CaptureTarget.Primary : new CaptureTarget(name, false);
+            _sessionState = "Ajout de l'écran de la TV…";
+            Changed?.Invoke();
+            _virtualOn = true;
+            var screen = Settings.DuplicateScreen;
+            var vs = VirtualDisplay.Screen;
+            var device = await Task.Run(() => vs.Start(opt.Width, opt.Height, screen), ct);
+            _tvLayout = await Task.Run(vs.Layout);
+            return new CaptureTarget(device, true, vs.CaptureDevice);
         }
-
-        var (state, _) = await Task.Run(VirtualDisplay.Detect, ct);
-        if (state == VddState.NotInstalled)
-        {
-            if (ConfirmVirtualDisplayInstall?.Invoke() != true)
-            {
-                _sessionState = "Mode Étendre : le pilote d'écran virtuel n'est pas installé";
-                return null;
-            }
-            void Status(string st) => _ui.Post(_ => { _sessionState = st; Changed?.Invoke(); }, null);
-            var err = await Task.Run(() => VirtualDisplay.Install(Status), ct);
-            if (err != null)
-            {
-                _sessionState = err;
-                return null;
-            }
-        }
-        _sessionState = "Allumage de l'écran virtuel…";
-        Changed?.Invoke();
-        _virtualOn = true;
-        Settings.VirtualDisplayOn = true;
-        Settings.Save();
-        var device = await Task.Run(() => VirtualDisplay.Activate(opt.Width, opt.Height), ct);
-        return new CaptureTarget(device, true);
+        if (string.IsNullOrEmpty(Settings.DuplicateScreen)) return CaptureTarget.Primary;
+        var name = DisplayLogic.DuplicateTarget(DisplayNative.List(), Settings.DuplicateScreen);
+        return name == null ? CaptureTarget.Primary : new CaptureTarget(name, false);
     }
 
-    /// <summary>Éteint l'écran virtuel s'il a été allumé pour ce partage (les fenêtres reviennent sur l'écran principal).</summary>
+    /// <summary>Retire l'écran virtuel s'il a servi à ce partage : disposition d'avant, fenêtres ramenées.</summary>
     private async Task TurnOffVirtualAsync()
     {
         if (!_virtualOn) return;
         _virtualOn = false;
-        await Task.Run(VirtualDisplay.Deactivate);
-        Settings.VirtualDisplayOn = false;
-        Settings.Save();
+        _tvLayout = TvLayout.Off;
+        try { await Task.Run(VirtualDisplay.Screen.Stop); }
+        catch (Exception e) { Log.Warn($"Écran virtuel : arrêt : {Log.Describe(e)}"); }
     }
 
     private void OnEnded(StreamSession s, Exception? e)
@@ -320,13 +372,9 @@ public sealed class AppController : IDisposable
         {
             try { Task.Run(() => s.DisposeAsync().AsTask()).Wait(5000); } catch { }
         }
-        if (_virtualOn || Settings.VirtualDisplayOn)
-        {
-            _virtualOn = false;
-            VirtualDisplay.Deactivate();
-            Settings.VirtualDisplayOn = false;
-            Settings.Save();
-        }
+        // Fermeture de l'appli : disposition d'avant le partage, tout de suite (pas d'attente du fil de l'interface).
+        _virtualOn = false;
+        try { VirtualDisplay.EmergencyStop(); } catch (Exception e) { Log.Warn($"Écran virtuel : {Log.Describe(e)}"); }
 
         try { _discovery?.Dispose(); } catch { }
     }

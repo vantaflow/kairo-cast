@@ -4,9 +4,6 @@ using KairoCast.Media;
 
 namespace KairoCast.App.Shell;
 
-/// <summary>Comme le panneau Win+K de Windows : recopier un écran du PC, ou ajouter un écran (virtuel) affiché par la TV.</summary>
-public enum ShareMode { Duplicate, Extend }
-
 /// <summary>Réglages de l'application, enregistrés dans %APPDATA%\KairoCast\settings.json. Un fichier absent ou corrompu donne les valeurs par défaut.</summary>
 public sealed class AppSettings
 {
@@ -14,12 +11,16 @@ public sealed class AppSettings
     public bool AutoStart { get; set; } = true;
     public QualityPreset Quality { get; set; } = QualityPreset.P1080F30;
     public bool SendAudio { get; set; } = true;
-    /// <summary>Dupliquer (par défaut, comportement historique) ou Étendre (écran virtuel).</summary>
-    public ShareMode ShareMode { get; set; } = ShareMode.Duplicate;
-    /// <summary>Écran recopié en mode Dupliquer (« \\.\DISPLAY2 ») ; null ou absent = écran principal.</summary>
+    /// <summary>
+    /// Pilote d'écran virtuel prêt : pendant le partage, la TV est un écran de Windows (Win+P : Dupliquer / Étendre).
+    /// Faux : recopie de l'écran choisi, sans toucher à l'affichage (comportement historique).
+    /// </summary>
+    public bool UseVirtualDisplay { get; set; } = true;
+    /// <summary>
+    /// Écran recopié (« \\.\DISPLAY2 ») ; null ou absent = écran principal. Avec l'écran virtuel : écran dont il est
+    /// la recopie à son arrivée.
+    /// </summary>
     public string? DuplicateScreen { get; set; }
-    /// <summary>L'écran virtuel a été allumé par l'appli et pas encore éteint (arrêt brutal) : il est éteint au démarrage suivant.</summary>
-    public bool VirtualDisplayOn { get; set; }
     /// <summary>La demande de règle de pare-feu a déjà été faite (acceptée ou refusée) : on ne la repose pas.</summary>
     public bool FirewallAsked { get; set; }
     /// <summary>Adresses ajoutées à la main, « ip:port ».</summary>
@@ -48,7 +49,6 @@ public sealed class AppSettings
             var s = JsonSerializer.Deserialize<AppSettings>(text, Json) ?? new AppSettings();
             s.ManualBoxes ??= new List<string>();
             if (!Enum.IsDefined(s.Quality)) s.Quality = QualityPreset.P1080F30;
-            if (!Enum.IsDefined(s.ShareMode)) s.ShareMode = ShareMode.Duplicate;
             return s;
         }
         catch

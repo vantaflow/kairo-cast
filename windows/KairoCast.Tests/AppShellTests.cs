@@ -17,43 +17,30 @@ public class SettingsTests
         Assert.False(s.FirewallAsked);
         Assert.Equal(QualityPreset.P1080F30, s.Quality);
         Assert.Empty(s.ManualBoxes);
-        Assert.Equal(ShareMode.Duplicate, s.ShareMode);
+        Assert.True(s.UseVirtualDisplay);
         Assert.Null(s.DuplicateScreen);
-        Assert.False(s.VirtualDisplayOn);
     }
 
     [Fact]
-    public void ShareModeRoundTrip()
+    public void DisplayChoicesRoundTrip()
     {
         var path = Tmp();
-        var s = new AppSettings { ShareMode = ShareMode.Extend, DuplicateScreen = @"\\.\DISPLAY2", VirtualDisplayOn = true };
+        var s = new AppSettings { UseVirtualDisplay = false, DuplicateScreen = @"\.\DISPLAY2" };
         Assert.True(s.Save(path));
-        Assert.Contains("\"Extend\"", File.ReadAllText(path));
         var r = AppSettings.Load(path);
-        Assert.Equal(ShareMode.Extend, r.ShareMode);
-        Assert.Equal(@"\\.\DISPLAY2", r.DuplicateScreen);
-        Assert.True(r.VirtualDisplayOn);
-    }
-
-    [Theory]
-    [InlineData("{\"ShareMode\":\"Inconnu\"}")]
-    [InlineData("{\"ShareMode\":7}")]
-    public void InvalidShareModeGivesDuplicate(string content)
-    {
-        var path = Tmp();
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, content);
-        Assert.Equal(ShareMode.Duplicate, AppSettings.Load(path).ShareMode);
+        Assert.False(r.UseVirtualDisplay);
+        Assert.Equal(@"\.\DISPLAY2", r.DuplicateScreen);
     }
 
     [Fact]
-    public void OldSettingsFileKeepsDuplicate()
+    public void SettingsFromTheDraftAreIgnored()
     {
+        // Champs d'une version de travail (ShareMode, VirtualDisplayOn) : ignorés, valeurs par défaut.
         var path = Tmp();
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, "{\"Quality\":\"P1080F60\",\"SendAudio\":false}");
+        File.WriteAllText(path, "{\"Quality\":\"P1080F60\",\"ShareMode\":\"Extend\",\"VirtualDisplayOn\":true}");
         var s = AppSettings.Load(path);
-        Assert.Equal(ShareMode.Duplicate, s.ShareMode);
+        Assert.True(s.UseVirtualDisplay);
         Assert.Equal(QualityPreset.P1080F60, s.Quality);
     }
 

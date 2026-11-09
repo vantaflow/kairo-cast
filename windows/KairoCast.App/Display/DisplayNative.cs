@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace KairoCast.App.Display;
 
 /// <summary>
-/// API d'affichage GDI de user32 : énumération des écrans, modes, allumage/extinction d'un écran sur le bureau.
+/// API d'affichage GDI de user32 : énumération des écrans et de leurs modes, définition de l'écran virtuel.
 /// Aucune de ces fonctions ne demande de droits d'administrateur.
 /// </summary>
 internal static class DisplayNative
@@ -12,7 +12,6 @@ internal static class DisplayNative
     private const int AttachedToDesktop = 0x1;
     private const int PrimaryDevice = 0x4;
     private const int MirroringDriver = 0x8;
-    private const int DmPosition = 0x20;
     private const int DmPelsWidth = 0x80000;
     private const int DmPelsHeight = 0x100000;
     private const int DmDisplayFrequency = 0x400000;
@@ -127,26 +126,17 @@ internal static class DisplayNative
         return modes;
     }
 
-    /// <summary>Allume l'écran sur le bureau (étendu) à cette position et dans ce mode. Renvoie le code DISP_CHANGE (0 = réussi).</summary>
-    public static int Attach(string device, int x, int y, DisplayMode mode)
+    /// <summary>
+    /// Change seulement la définition d'un écran déjà allumé (ni sa position ni les autres écrans).
+    /// Renvoie le code DISP_CHANGE (0 = réussi).
+    /// </summary>
+    public static int SetResolution(string device, DisplayMode mode)
     {
         var dm = NewDevMode();
-        dm.dmFields = DmPosition | DmPelsWidth | DmPelsHeight | (mode.Hz > 0 ? DmDisplayFrequency : 0);
-        dm.dmPositionX = x;
-        dm.dmPositionY = y;
+        dm.dmFields = DmPelsWidth | DmPelsHeight | (mode.Hz > 0 ? DmDisplayFrequency : 0);
         dm.dmPelsWidth = mode.Width;
         dm.dmPelsHeight = mode.Height;
         dm.dmDisplayFrequency = mode.Hz;
-        var r = ChangeDisplaySettingsExW(device, ref dm, IntPtr.Zero, CdsUpdateRegistry | CdsNoReset, IntPtr.Zero);
-        if (r != 0) return r;
-        return ChangeDisplaySettingsExW(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
-    }
-
-    /// <summary>Retire l'écran du bureau (définition 0×0) ; les fenêtres reviennent sur les autres écrans.</summary>
-    public static int Detach(string device)
-    {
-        var dm = NewDevMode();
-        dm.dmFields = DmPosition | DmPelsWidth | DmPelsHeight;
         var r = ChangeDisplaySettingsExW(device, ref dm, IntPtr.Zero, CdsUpdateRegistry | CdsNoReset, IntPtr.Zero);
         if (r != 0) return r;
         return ChangeDisplaySettingsExW(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);

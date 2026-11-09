@@ -27,12 +27,16 @@ public sealed class TrayApp : ApplicationContext
         using (var anchor = new Control()) _ = anchor.Handle;
         var ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         _controller = new AppController(ui, _settings);
-        _controller.ConfirmVirtualDisplayInstall = () => MessageBox.Show(
-            "Le mode Étendre ajoute un écran virtuel que la TV affiche, comme un deuxième écran.\n\n" +
-            "Il faut pour cela installer une seule fois le pilote open source « Virtual Display Driver » " +
-            "(VirtualDrivers, licence MIT, signé) : téléchargement par winget, puis Windows demande l'autorisation d'installer.\n\n" +
-            "Ensuite, l'écran virtuel n'apparaît que pendant les partages en mode Étendre.\n\nInstaller le pilote maintenant ?",
-            "Kairo Cast – mode Étendre", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+        _controller.ConfirmVirtualDisplaySetup = status => MessageBox.Show(
+            "Avec un écran virtuel, la TV devient un écran de Windows pendant le partage : Win+P choisit Dupliquer " +
+            "(par défaut) ou Étendre, comme pour un écran branché. Hors partage, il n'existe pas pour Windows.\n\n" +
+            (status == Display.VddStatus.NotInstalled
+                ? "Il faut installer une seule fois le pilote open source « Virtual Display Driver » (VirtualDrivers, " +
+                  "licence MIT, signé) : téléchargement par winget, puis Windows demande une autorisation.\n\n"
+                : "Le pilote « Virtual Display Driver » est installé ; Kairo Cast doit pouvoir l'activer au début d'un partage " +
+                  "et le désactiver à la fin. Windows demande une autorisation, une seule fois.\n\n") +
+            "L'affichage actuel est sauvegardé avant et remis tel quel après.\n\nContinuer ?",
+            "Kairo Cast – écran virtuel", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
 
         _main = new MainForm(_controller, _icon);
         _ = _main.Handle;

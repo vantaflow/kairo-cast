@@ -51,9 +51,6 @@ public static class DisplayLogic
         || d.AdapterName.Contains("IddSampleDriver", StringComparison.OrdinalIgnoreCase)
         || d.MonitorId.Contains("MTT1337", StringComparison.OrdinalIgnoreCase);
 
-    public static DisplayInfo? FindVirtual(IEnumerable<DisplayInfo> displays) =>
-        displays.Where(IsVirtual).OrderByDescending(d => d.Attached).FirstOrDefault();
-
     /// <summary>Écrans réels allumés (le principal d'abord), parmi lesquels choisir l'écran à recopier.</summary>
     public static IReadOnlyList<DisplayInfo> DuplicateCandidates(IEnumerable<DisplayInfo> displays) =>
         displays.Where(d => d.Attached && !IsVirtual(d))
@@ -71,18 +68,8 @@ public static class DisplayLogic
         return list.FirstOrDefault(d => d.Primary)?.DeviceName ?? list.FirstOrDefault()?.DeviceName;
     }
 
-    /// <summary>Place de l'écran virtuel : à droite de l'écran le plus à droite, aligné en haut sur l'écran principal.</summary>
-    public static (int X, int Y) ExtendPosition(IEnumerable<DisplayInfo> displays, string? virtualName = null)
-    {
-        var attached = displays.Where(d => d.Attached && d.Width > 0 && d.DeviceName != virtualName).ToList();
-        if (attached.Count == 0) return (0, 0);
-        var right = attached.Max(d => d.X + d.Width);
-        var primary = attached.FirstOrDefault(d => d.Primary) ?? attached[0];
-        return (right, primary.Y);
-    }
-
     /// <summary>
-    /// Mode à appliquer à l'écran virtuel : la définition demandée si elle existe (60 Hz de préférence),
+    /// Mode à appliquer à l'écran virtuel étendu : la définition demandée si elle existe (60 Hz de préférence),
     /// sinon la plus grande de même format qui tient dedans, sinon la plus grande qui tient, sinon la plus petite.
     /// </summary>
     public static DisplayMode? PickMode(IEnumerable<DisplayMode> modes, int width, int height)
@@ -151,4 +138,154 @@ public static class DisplayLogic
         sb.AppendLine("</vdd_settings>");
         return sb.ToString();
     }
+
+    // ---------------------------------------------------------------- chemins d'affichage (API CCD)
+
+    /// <summary>Code « désactivé » du Gestionnaire de périphériques (CM_PROB_DISABLED).</summary>
+    public const int ProblemDisabled = 22;
+
+    /// <summary>Clé d'une source ou d'une cible : « LUID de l'adaptateur:identifiant ».</summary>
+    public static string Key(string adapter, uint id) => $"{adapter}:{id}";
+
+    private static string AdapterOf(string key)
+    {
+        var i = key.LastIndexOf(':');
+        return i < 0 ? key : key[..i];
+    }
+
+    /// <summary>
+    /// Chemin à allumer pour l'écran virtuel parmi tous les chemins possibles (QDC_ALL_PATHS).
+    /// Recopie (<paramref name="cloneSource"/> renseigné) : chemin vers l'écran virtuel depuis cette source, qui peut déjà
+    /// alimenter plusieurs écrans (un clone HDMI reste un clone, l'écran virtuel s'y ajoute).
+    /// Extension : chemin depuis une source qu'aucun autre écran n'utilise, celle de l'adaptateur du pilote de préférence.
+    /// </summary>
+    public static int? ChooseVirtualPath(IEnumerable<PathDesc> all, IEnumerable<string> usedSources, string? cloneSource)
+    {
+        var virtuals = all.Where(p => p.Virtual).ToList();
+        if (cloneSource != null)
+            return virtuals.FirstOrDefault(p => p.SourceKey == cloneSource)?.Index;
+        var used = usedSources.ToHashSet();
+        var free = virtuals.Where(p => !used.Contains(p.SourceKey)).ToList();
+        var own = free.FirstOrDefault(p => AdapterOf(p.SourceKey) == AdapterOf(p.TargetKey));
+        return (own ?? free.FirstOrDefault())?.Index;
+    }
+
+    /// <summary>Source recopiée par l'écran virtuel : celle de l'écran choisi, sinon celle de l'écran principal.</summary>
+    public static string? CloneSource(IEnumerable<PathDesc> active, string? preferredScreen)
+    {
+        var real = active.Where(p => p.Active && !p.Virtual).ToList();
+        if (!string.IsNullOrEmpty(preferredScreen))
+        {
+            var p = real.FirstOrDefault(r => string.Equals(r.SourceName, preferredScreen, StringComparison.OrdinalIgnoreCase));
+            if (p != null) return p.SourceKey;
+        }
+        return (real.FirstOrDefault(r => r.Primary) ?? real.FirstOrDefault())?.SourceKey;
+    }
+
+    /// <summary>Ce que montre la TV d'après les chemins actifs (ce que Win+P a choisi).</summary>
+    public static TvLayout LayoutOf(IEnumerable<PathDesc> active)
+    {
+        var list = active.Where(p => p.Active).ToList();
+        var v = list.FirstOrDefault(p => p.Virtual);
+        if (v == null) return TvLayout.Off;
+        var others = list.Where(p => !p.Virtual).ToList();
+        if (others.Count == 0) return TvLayout.Only;
+        return others.Any(o => o.SourceKey == v.SourceKey) ? TvLayout.Duplicate : TvLayout.Extend;
+    }
+
+    /// <summary>
+    /// Correspondance des LUID d'adaptateurs sauvegardés vers les LUID actuels, par chemin de périphérique (un LUID change
+    /// à chaque démarrage de Windows ; la sauvegarde peut dater d'avant un redémarrage).
+    /// </summary>
+    public static Dictionary<string, string> RemapAdapters(IEnumerable<(string Luid, string Path)> saved, IEnumerable<(string Luid, string Path)> current)
+    {
+        var byPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (luid, path) in current)
+            if (!string.IsNullOrEmpty(path)) byPath.TryAdd(path, luid);
+        var map = new Dictionary<string, string>();
+        foreach (var (luid, path) in saved)
+            if (!string.IsNullOrEmpty(path) && byPath.TryGetValue(path, out var now) && now != luid)
+                map[luid] = now;
+        return map;
+    }
+
+    // ---------------------------------------------------------------- fenêtres à rapatrier
+
+    private static readonly HashSet<string> ShellClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
+    };
+
+    /// <summary>
+    /// Fenêtres à ramener sur l'écran principal à la fin du partage : visibles, non masquées, ni bureau (Progman,
+    /// WorkerW), ni barre des tâches, ni fenêtre d'outils, et dont le centre est sur l'écran virtuel.
+    /// </summary>
+    public static IReadOnlyList<WindowDesc> WindowsToRescue(IEnumerable<WindowDesc> windows, DisplayRect virtualBounds) =>
+        windows.Where(w => w.Visible && !w.Cloaked && !w.ToolWindow && !ShellClasses.Contains(w.Class)
+                           && w.Bounds.Width > 0 && w.Bounds.Height > 0 && virtualBounds.Contains(w.Bounds.CenterX, w.Bounds.CenterY))
+            .ToList();
+
+    /// <summary>Même place relative, de l'écran virtuel vers la zone de travail de l'écran principal ; taille réduite si besoin.</summary>
+    public static DisplayRect Relocate(DisplayRect window, DisplayRect from, DisplayRect to)
+    {
+        var w = Math.Min(window.Width, to.Width);
+        var h = Math.Min(window.Height, to.Height);
+        var x = to.X + Math.Clamp(window.X - from.X, 0, to.Width - w);
+        var y = to.Y + Math.Clamp(window.Y - from.Y, 0, to.Height - h);
+        return new DisplayRect(x, y, w, h);
+    }
+
+    // ---------------------------------------------------------------- allumage sans élévation (tâches planifiées)
+
+    /// <summary>Tâche planifiée qui active (true) ou désactive l'écran virtuel.</summary>
+    public static string TaskName(bool enable) => enable ? @"\KairoCast\VirtualDisplayOn" : @"\KairoCast\VirtualDisplayOff";
+
+    public static string PnputilArgs(bool enable, string instanceId) =>
+        $"{(enable ? "/enable-device" : "/disable-device")} \"{instanceId}\"";
+
+    /// <summary>
+    /// Définition de la tâche (créée une fois, avec l'accord de l'utilisateur) : pnputil de System32 avec des arguments
+    /// fixes, au nom de l'utilisateur, avec ses droits les plus élevés. L'appli la lance sans élévation (schtasks /run) ;
+    /// elle ne peut rien faire d'autre qu'activer ou désactiver ce périphérique précis.
+    /// </summary>
+    public static string TaskXml(bool enable, string instanceId, string userSid, string pnputil)
+    {
+        static string E(string v) => System.Security.SecurityElement.Escape(v) ?? "";
+        var sb = new StringBuilder();
+        sb.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-16\"?>");
+        sb.AppendLine("<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">");
+        sb.AppendLine($"  <RegistrationInfo><Description>Kairo Cast : {(enable ? "active" : "désactive")} l'écran virtuel (Virtual Display Driver) au début ou à la fin d'un partage.</Description></RegistrationInfo>");
+        sb.AppendLine("  <Principals><Principal id=\"Author\">");
+        sb.AppendLine($"    <UserId>{E(userSid)}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel>");
+        sb.AppendLine("  </Principal></Principals>");
+        sb.AppendLine("  <Settings>");
+        sb.AppendLine("    <MultipleInstancesPolicy>Queue</MultipleInstancesPolicy>");
+        sb.AppendLine("    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>");
+        sb.AppendLine("    <AllowStartOnDemand>true</AllowStartOnDemand><AllowHardTerminate>true</AllowHardTerminate>");
+        sb.AppendLine("    <Hidden>true</Hidden><ExecutionTimeLimit>PT1M</ExecutionTimeLimit><Priority>5</Priority>");
+        sb.AppendLine("  </Settings>");
+        sb.AppendLine("  <Actions Context=\"Author\"><Exec>");
+        sb.AppendLine($"    <Command>{E(pnputil)}</Command>");
+        sb.AppendLine($"    <Arguments>{E(PnputilArgs(enable, instanceId))}</Arguments>");
+        sb.AppendLine("  </Exec></Actions>");
+        sb.AppendLine("</Task>");
+        return sb.ToString();
+    }
 }
+
+/// <summary>Ce que la TV affiche quand l'écran virtuel est là : rien, la recopie d'un écran, un écran à part, ou seule.</summary>
+public enum TvLayout { Off, Duplicate, Extend, Only }
+
+/// <summary>Un chemin source → cible de l'API CCD, réduit à ce que la logique utilise.</summary>
+public sealed record PathDesc(int Index, string SourceKey, string TargetKey, bool Active, bool Virtual, string? SourceName = null, bool Primary = false);
+
+/// <summary>Rectangle en coordonnées du bureau.</summary>
+public readonly record struct DisplayRect(int X, int Y, int Width, int Height)
+{
+    public int CenterX => X + Width / 2;
+    public int CenterY => Y + Height / 2;
+    public bool Contains(int x, int y) => x >= X && x < X + Width && y >= Y && y < Y + Height;
+}
+
+/// <summary>Fenêtre de premier niveau vue par EnumWindows.</summary>
+public sealed record WindowDesc(long Handle, string Class, bool Visible, bool ToolWindow, bool Cloaked, DisplayRect Bounds, string Title = "");

@@ -2,27 +2,27 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
+using System.Security.Principal;
+using System.Text;
 using KairoCast.App.Diagnostics;
 using Vortice.DXGI;
 
 namespace KairoCast.App.Display;
 
-public enum VddState { NotInstalled, Ready, Problem }
-
 /// <summary>
-/// Écran virtuel du mode Étendre, fourni par le pilote open source Virtual Display Driver (VirtualDrivers, MIT,
-/// signé par SignPath Foundation).
+/// Écran virtuel fourni par le pilote open source Virtual Display Driver (VirtualDrivers, MIT, signé par SignPath
+/// Foundation ; matériel Root\MttVDD, moniteur EDID « MTT1337 »).
 ///
-/// Installation (une fois) : <c>winget install VirtualDrivers.Virtual-Display-Driver</c> (paquet portable, sans élévation :
-/// application VDD Control, devcon et pilote signé), puis une seule élévation UAC où KairoCast.exe se relance avec
-/// <c>--vdd-install</c> : certificat de l'éditeur dans « Éditeurs approuvés », vdd_settings.xml, <c>devcon install … Root\MttVDD</c>.
+/// Au repos, le périphérique est <b>désactivé</b> : Windows ne voit aucun écran de plus (Win+P, Paramètres, branchement
+/// d'un écran ne peuvent pas l'allumer). Il n'est activé que pendant un partage, puis désactivé.
+/// Le pilote ne sait pas débrancher son moniteur sans être désactivé, et l'activer demande des droits d'administrateur :
+/// une préparation unique (une demande UAC, sur clic) crée deux tâches planifiées « pnputil /enable-device » et
+/// « /disable-device » limitées à ce périphérique, que l'appli lance ensuite sans élévation.
 ///
-/// Ensuite, aucune élévation : l'écran virtuel reste installé (un moniteur, cf. vdd_settings.xml) mais est retiré du
-/// bureau hors partage. Allumer/éteindre passe par SetDisplayConfig (<see cref="DisplayConfig"/>), la définition et la
-/// position par ChangeDisplaySettingsEx, comme le panneau Paramètres › Écran.
-
-/// Le tube de contrôle du pilote (\\.\pipe\MTTVirtualDisplayPipe, ouvert à tous) n'est pas utilisé : SETDISPLAYCOUNT
-/// réécrit vdd_settings.xml (dossier protégé) et recharge l'adaptateur, plus lent et moins fiable.
+/// Installation (sur clic) : <c>winget install VirtualDrivers.Virtual-Display-Driver</c> (paquet portable, sans
+/// élévation), puis KairoCast.exe <c>--vdd-setup</c> élevé : certificat de l'éditeur dans « Éditeurs approuvés »,
+/// vdd_settings.xml, <c>devcon install … Root\MttVDD</c>, désactivation immédiate, tâches planifiées.
+/// La disposition des écrans est sauvegardée avant et restaurée après (l'arrivée du moniteur peut faire basculer Windows).
 /// </summary>
 internal static class VirtualDisplay
 {
@@ -43,18 +43,24 @@ internal static class VirtualDisplay
     [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool SetupDiGetDeviceRegistryPropertyW(IntPtr set, ref SP_DEVINFO_DATA data, int property, out int regType, byte[]? buffer, int size, out int required);
 
+    [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool SetupDiGetDeviceInstanceIdW(IntPtr set, ref SP_DEVINFO_DATA data, StringBuilder id, int size, out int required);
+
     [DllImport("setupapi.dll")]
     private static extern bool SetupDiDestroyDeviceInfoList(IntPtr set);
 
     [DllImport("cfgmgr32.dll")]
     private static extern int CM_Get_DevNode_Status(out int status, out int problem, int devInst, int flags);
 
-    /// <summary>État du pilote : absent, prêt, ou présent avec un problème (désactivé…), avec le code du Gestionnaire de périphériques.</summary>
-    public static (VddState State, int Problem) Detect()
+    /// <summary>Le périphérique du pilote : présent ou non, code de problème (0 = actif, 22 = désactivé), identifiant d'instance.</summary>
+    public readonly record struct DeviceState(bool Installed, int Problem, string InstanceId);
+
+    /// <summary>Lecture seule (SetupAPI) : aucun effet sur le périphérique.</summary>
+    public static DeviceState Detect()
     {
         var cls = DisplayClass;
         var set = SetupDiGetClassDevsW(ref cls, null, IntPtr.Zero, DigcfPresent);
-        if (set == new IntPtr(-1)) return (VddState.NotInstalled, 0);
+        if (set == new IntPtr(-1)) return default;
         try
         {
             for (var i = 0; ; i++)
@@ -63,70 +69,89 @@ internal static class VirtualDisplay
                 if (!SetupDiEnumDeviceInfo(set, i, ref data)) break;
                 var buf = new byte[1024];
                 if (!SetupDiGetDeviceRegistryPropertyW(set, ref data, SpdrpHardwareId, out _, buf, buf.Length, out var req)) continue;
-                var ids = System.Text.Encoding.Unicode.GetString(buf, 0, Math.Min(req, buf.Length)).Split('\0', StringSplitOptions.RemoveEmptyEntries);
+                var ids = Encoding.Unicode.GetString(buf, 0, Math.Min(req, buf.Length)).Split('\0', StringSplitOptions.RemoveEmptyEntries);
                 if (!ids.Any(DisplayLogic.IsVddHardwareId)) continue;
+                var sb = new StringBuilder(256);
+                var instance = SetupDiGetDeviceInstanceIdW(set, ref data, sb, sb.Capacity, out _) ? sb.ToString() : "";
                 var cr = CM_Get_DevNode_Status(out _, out var problem, data.DevInst, 0);
-                return cr == 0 && problem == 0 ? (VddState.Ready, 0) : (VddState.Problem, problem);
+                return new DeviceState(true, cr == 0 ? problem : -1, instance);
             }
         }
         finally { SetupDiDestroyDeviceInfoList(set); }
-        return (VddState.NotInstalled, 0);
+        return default;
     }
 
-    // ---------------------------------------------------------------- installation
+    // ---------------------------------------------------------------- instance partagée
+
+    private static readonly Lazy<VirtualScreen> LazyScreen = new(() =>
+        new VirtualScreen(new DisplaySystem(), new VirtualDevice(), new FileRestoreStore(FileRestoreStore.DefaultPath), Log.Info));
+
+    /// <summary>L'écran virtuel de l'application (une seule instance : la même sauvegarde pour tous les chemins d'arrêt).</summary>
+    public static VirtualScreen Screen => LazyScreen.Value;
+
+    /// <summary>Dernier recours (exception non gérée, fermeture de session Windows) : restaurer si un partage était en cours.</summary>
+    public static void EmergencyStop()
+    {
+        if (LazyScreen.IsValueCreated && LazyScreen.Value.Active) LazyScreen.Value.Stop();
+    }
+
+    // ---------------------------------------------------------------- installation et préparation (sur clic seulement)
 
     /// <summary>
-    /// Installe le pilote : winget (sans élévation) puis KairoCast.exe --vdd-install élevé (une demande UAC).
-    /// Renvoie null si tout va bien, sinon un message prêt à afficher. À appeler hors du fil de l'interface.
+    /// Installe le pilote si besoin (winget, sans élévation) et le prépare pour Kairo Cast (une demande UAC).
+    /// Disposition des écrans sauvegardée avant et restaurée après. Renvoie null si tout va bien, sinon un message.
+    /// À appeler hors du fil de l'interface, uniquement après un clic explicite de l'utilisateur.
     /// </summary>
-    public static string? Install(Action<string> status)
+    public static string? Setup(Action<string> status)
     {
-        Log.Info("Écran virtuel : installation demandée");
-        var pkg = FindPackageDir();
-        if (pkg == null)
+        Log.Info("Écran virtuel : installation/préparation demandée par l'utilisateur");
+        var state = Detect();
+        string? pkg = null;
+        if (!state.Installed)
         {
-            status("Téléchargement du pilote d'écran virtuel (winget)…");
-            var (code, output) = Run("winget", DisplayLogic.WingetInstallArgs, TimeSpan.FromMinutes(10));
-            Log.Info($"Écran virtuel : winget a rendu {code} : {Tail(output)}");
             pkg = FindPackageDir();
             if (pkg == null)
-                return code == int.MinValue
-                    ? "winget est introuvable : installez « App Installer » depuis le Microsoft Store, puis réessayez."
-                    : "Le téléchargement du pilote par winget a échoué (voir le journal).";
-        }
-        Log.Info($"Écran virtuel : paquet winget dans {pkg}");
-
-        status("Installation du pilote d'écran virtuel : acceptez la demande de Windows…");
-        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("chemin de KairoCast.exe inconnu");
-        try
-        {
-            using var p = Process.Start(new ProcessStartInfo(exe)
             {
-                UseShellExecute = true,
-                Verb = "runas",
-                ArgumentList = { "--vdd-install", pkg },
-                WindowStyle = ProcessWindowStyle.Hidden,
-            })!;
-            if (!p.WaitForExit(TimeSpan.FromMinutes(3)))
-                return "L'installation du pilote ne répond pas (voir le journal).";
-            Log.Info($"Écran virtuel : installation élevée terminée, code {p.ExitCode}");
-            if (p.ExitCode != 0) return $"L'installation du pilote a échoué (code {p.ExitCode}, voir le journal).";
-        }
-        catch (Win32Exception e) when (e.NativeErrorCode == ErrorCancelled)
-        {
-            Log.Warn("Écran virtuel : élévation refusée par l'utilisateur");
-            return "Installation annulée : Windows n'a pas reçu l'autorisation.";
+                status("Téléchargement du pilote d'écran virtuel (winget)…");
+                var (code, output) = Run("winget", DisplayLogic.WingetInstallArgs, TimeSpan.FromMinutes(10));
+                Log.Info($"Écran virtuel : winget a rendu {code} : {Tail(output)}");
+                pkg = FindPackageDir();
+                if (pkg == null)
+                    return code == int.MinValue
+                        ? "winget est introuvable : installez « App Installer » depuis le Microsoft Store, puis réessayez."
+                        : "Le téléchargement du pilote par winget a échoué (voir le journal).";
+            }
+            Log.Info($"Écran virtuel : paquet winget dans {pkg}");
         }
 
-        // Windows allume d'office le nouvel écran : on l'éteint, il ne servira que pendant les partages.
-        status("Préparation de l'écran virtuel…");
-        var sw = Stopwatch.StartNew();
-        DisplayInfo? v = null;
-        while (sw.Elapsed < TimeSpan.FromSeconds(20) && (v = DisplayLogic.FindVirtual(DisplayNative.List())) == null) Thread.Sleep(250);
-        if (v == null) return "Le pilote est installé mais l'écran virtuel n'apparaît pas (redémarrer le PC peut être nécessaire).";
-        Thread.Sleep(1000);
-        Deactivate();
-        return null;
+        status(state.Installed
+            ? "Activation de l'écran virtuel pour Kairo Cast : acceptez la demande de Windows…"
+            : "Installation du pilote d'écran virtuel : acceptez la demande de Windows…");
+        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("chemin de KairoCast.exe inconnu");
+        var sid = WindowsIdentity.GetCurrent().User?.Value ?? throw new InvalidOperationException("utilisateur Windows inconnu");
+        var err = Screen.Guard(() =>
+        {
+            try
+            {
+                using var p = Process.Start(new ProcessStartInfo(exe)
+                {
+                    UseShellExecute = true,
+                    Verb = "runas",
+                    ArgumentList = { "--vdd-setup", sid, pkg ?? "" },
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                })!;
+                if (!p.WaitForExit(TimeSpan.FromMinutes(3))) return "La préparation du pilote ne répond pas (voir le journal).";
+                Log.Info($"Écran virtuel : préparation élevée terminée, code {p.ExitCode}");
+                return p.ExitCode == 0 ? null : $"La préparation du pilote a échoué (code {p.ExitCode}, voir le journal).";
+            }
+            catch (Win32Exception e) when (e.NativeErrorCode == ErrorCancelled)
+            {
+                Log.Warn("Écran virtuel : élévation refusée par l'utilisateur");
+                return "Annulé : Windows n'a pas reçu l'autorisation.";
+            }
+        });
+        VirtualDevice.ForgetTasks();
+        return err;
     }
 
     private static string? FindPackageDir()
@@ -144,147 +169,95 @@ internal static class VirtualDisplay
         return dir != null && File.Exists(Path.Combine(dir, "Dependencies", "devcon.exe")) ? dir : null;
     }
 
+    private static string Pnputil => Path.Combine(Environment.SystemDirectory, "pnputil.exe");
+
     /// <summary>
-    /// Partie élevée (KairoCast.exe --vdd-install &lt;paquet&gt;) : certificat, configuration, devcon. Code 0 si réussi.
+    /// Partie élevée (KairoCast.exe --vdd-setup &lt;SID&gt; &lt;paquet ou vide&gt;) : installe le pilote s'il manque, le
+    /// désactive (état de repos) et crée les deux tâches planifiées. Code 0 si réussi.
     /// </summary>
-    public static int InstallElevated(string pkg)
+    public static int SetupElevated(string userSid, string pkg)
     {
         try
         {
-            Log.Info($"Écran virtuel (élevé) : installation depuis {pkg}");
-            if (Detect().State != VddState.NotInstalled)
+            Log.Info($"Écran virtuel (élevé) : préparation pour {userSid}, paquet « {pkg} »");
+            if (!Detect().Installed)
             {
-                Log.Info("Écran virtuel (élevé) : pilote déjà présent, rien à faire");
-                return 0;
+                var code = InstallDriver(pkg);
+                if (code != 0) return code;
             }
-            var arm = RuntimeInformation.OSArchitecture == Architecture.Arm64;
-            var drv = Path.Combine(pkg, DisplayLogic.DriverSubdir(arm));
-            var inf = Path.Combine(drv, "MttVDD.inf");
-            var cat = Path.Combine(drv, "mttvdd.cat");
-            var devcon = Path.Combine(pkg, "Dependencies", "devcon.exe");
-            foreach (var f in new[] { inf, cat, devcon })
-                if (!File.Exists(f)) { Log.Error($"Écran virtuel (élevé) : fichier manquant {f}"); return 3; }
-
-            Directory.CreateDirectory(DisplayLogic.ConfigDir);
-            var xml = Path.Combine(DisplayLogic.ConfigDir, "vdd_settings.xml");
-            if (!File.Exists(xml))
+            var sw = Stopwatch.StartNew();
+            DeviceState st;
+            while (!(st = Detect()).Installed || st.InstanceId.Length == 0)
             {
-                File.WriteAllText(xml, DisplayLogic.SettingsXml());
-                Log.Info($"Écran virtuel (élevé) : {xml} écrit");
+                if (sw.Elapsed > TimeSpan.FromSeconds(20)) { Log.Error("Écran virtuel (élevé) : périphérique introuvable après installation"); return 6; }
+                Thread.Sleep(250);
             }
-            else Log.Info($"Écran virtuel (élevé) : {xml} existant conservé");
-
-            // Sans cela, Windows ouvrirait une seconde fenêtre « Voulez-vous installer ce logiciel de périphérique ? ».
-            var certs = new X509Certificate2Collection();
-#pragma warning disable SYSLIB0057
-            certs.Import(File.ReadAllBytes(cat));
-#pragma warning restore SYSLIB0057
-            using (var store = new X509Store(StoreName.TrustedPublisher, StoreLocation.LocalMachine))
+            if (st.Problem != DisplayLogic.ProblemDisabled)
             {
-                store.Open(OpenFlags.ReadWrite);
-                foreach (var c in certs)
+                var (dc, dout) = Run(Pnputil, DisplayLogic.PnputilArgs(false, st.InstanceId), TimeSpan.FromMinutes(1));
+                Log.Info($"Écran virtuel (élevé) : désactivation (état de repos) : {dc} {Tail(dout)}");
+            }
+            foreach (var enable in new[] { true, false })
+            {
+                var xml = Path.Combine(Path.GetTempPath(), $"kairocast-task-{(enable ? "on" : "off")}-{Guid.NewGuid():N}.xml");
+                try
                 {
-                    // Seul le certificat du signataire du pilote (pas les autorités) va dans « Éditeurs approuvés ».
-                    if (!c.Subject.Contains("SignPath", StringComparison.OrdinalIgnoreCase)) continue;
-                    store.Add(c);
-                    Log.Info($"Écran virtuel (élevé) : certificat ajouté aux éditeurs approuvés : {c.Subject} ({c.Thumbprint})");
+                    File.WriteAllText(xml, DisplayLogic.TaskXml(enable, st.InstanceId, userSid, Pnputil), Encoding.Unicode);
+                    var (tc, tout) = Run("schtasks", $"/create /tn \"{DisplayLogic.TaskName(enable)}\" /xml \"{xml}\" /f", TimeSpan.FromMinutes(1));
+                    Log.Info($"Écran virtuel (élevé) : tâche {DisplayLogic.TaskName(enable)} : {tc} {Tail(tout)}");
+                    if (tc != 0) return 7;
                 }
+                finally { try { File.Delete(xml); } catch { } }
             }
-
-            var (code, output) = Run(devcon, $"install \"{inf}\" {DisplayLogic.HardwareId}", TimeSpan.FromMinutes(2), drv);
-            Log.Info($"Écran virtuel (élevé) : devcon a rendu {code} : {Tail(output)}");
-            return code is 0 or 1 ? 0 : 4; // 1 = redémarrage conseillé
+            return 0;
         }
         catch (Exception e)
         {
-            Log.Error("Écran virtuel (élevé) : installation impossible", e);
+            Log.Error("Écran virtuel (élevé) : préparation impossible", e);
             return 5;
         }
     }
 
-    // ---------------------------------------------------------------- allumage / extinction
-
-    /// <summary>
-    /// Allume l'écran virtuel en extension, à droite des autres, dans la définition la plus proche de celle demandée.
-    /// Renvoie son nom GDI (« \\.\DISPLAY3 »). Lève une exception avec un message lisible en cas d'échec.
-    /// </summary>
-    public static string Activate(int width, int height)
+    private static int InstallDriver(string pkg)
     {
-        var (state, problem) = Detect();
-        if (state == VddState.NotInstalled) throw new InvalidOperationException("le pilote d'écran virtuel n'est pas installé");
-        if (state == VddState.Problem)
-            throw new InvalidOperationException($"le pilote d'écran virtuel est présent mais inactif (code {problem}, désactivé dans le Gestionnaire de périphériques ?)");
-        if (DisplayLogic.FindVirtual(DisplayNative.List()) == null)
-            throw new InvalidOperationException("l'écran virtuel n'apparaît pas dans Windows (redémarrer le PC peut être nécessaire)");
-        Log.Info($"Écran virtuel : affichage avant allumage : {DisplayConfig.DescribeActive()}");
-        var sw = Stopwatch.StartNew();
+        if (string.IsNullOrEmpty(pkg)) { Log.Error("Écran virtuel (élevé) : paquet du pilote absent"); return 2; }
+        var arm = RuntimeInformation.OSArchitecture == Architecture.Arm64;
+        var drv = Path.Combine(pkg, DisplayLogic.DriverSubdir(arm));
+        var inf = Path.Combine(drv, "MttVDD.inf");
+        var cat = Path.Combine(drv, "mttvdd.cat");
+        var devcon = Path.Combine(pkg, "Dependencies", "devcon.exe");
+        foreach (var f in new[] { inf, cat, devcon })
+            if (!File.Exists(f)) { Log.Error($"Écran virtuel (élevé) : fichier manquant {f}"); return 3; }
 
-        // 1. Branchement en extension, sur sa propre source (le sort d'une éventuelle recopie) : API CCD.
-        string name;
-        try
+        Directory.CreateDirectory(DisplayLogic.ConfigDir);
+        var xml = Path.Combine(DisplayLogic.ConfigDir, "vdd_settings.xml");
+        if (!File.Exists(xml))
         {
-            name = DisplayConfig.Extend();
-            Log.Info($"Écran virtuel : branché en extension sur {name}");
+            File.WriteAllText(xml, DisplayLogic.SettingsXml());
+            Log.Info($"Écran virtuel (élevé) : {xml} écrit");
         }
-        catch (Exception e)
-        {
-            Log.Warn($"Écran virtuel : SetDisplayConfig refusé ({e.Message}), essai par ChangeDisplaySettingsEx");
-            var v = DisplayLogic.FindVirtual(DisplayNative.List())!;
-            name = v.DeviceName;
-            var r = DisplayNative.Attach(name, DisplayLogic.ExtendPosition(DisplayNative.List(), name).X, 0, new DisplayMode(width, height, 60));
-            if (r != 0) throw new InvalidOperationException($"Windows refuse d'allumer l'écran virtuel ({DisplayNative.Describe(r)})");
-        }
-        while (DisplayNative.MonitorFor(name) == IntPtr.Zero && sw.Elapsed < TimeSpan.FromSeconds(5)) Thread.Sleep(100);
-        if (DisplayNative.MonitorFor(name) == IntPtr.Zero)
-            throw new InvalidOperationException("l'écran virtuel ne s'est pas allumé");
+        else Log.Info($"Écran virtuel (élevé) : {xml} existant conservé");
 
-        // 2. Définition de la box et place à droite des autres écrans : API GDI.
-        var all = DisplayNative.List();
-        var cur = all.FirstOrDefault(d => d.DeviceName == name);
-        var mode = DisplayLogic.PickMode(DisplayNative.Modes(name), width, height) ?? new DisplayMode(width, height, 60);
-        var (x, y) = DisplayLogic.ExtendPosition(all, name);
-        Log.Info($"Écran virtuel : {name} « {cur?.AdapterName} » ({cur?.AdapterId}, {cur?.MonitorId}) actuellement {cur?.Width}x{cur?.Height} en {cur?.X},{cur?.Y} ; " +
-                 $"demandé {width}x{height}, mode choisi {mode.Width}x{mode.Height}@{mode.Hz}, position {x},{y}");
-        if (cur == null || cur.Width != mode.Width || cur.Height != mode.Height || cur.X != x || cur.Y != y)
+        // Sans cela, Windows ouvrirait une seconde fenêtre « Voulez-vous installer ce logiciel de périphérique ? ».
+        var certs = new X509Certificate2Collection();
+#pragma warning disable SYSLIB0057
+        certs.Import(File.ReadAllBytes(cat));
+#pragma warning restore SYSLIB0057
+        using (var store = new X509Store(StoreName.TrustedPublisher, StoreLocation.LocalMachine))
         {
-            var r = DisplayNative.Attach(name, x, y, mode);
-            Log.Info($"Écran virtuel : mode et position {DisplayNative.Describe(r)}");
-            if (r != 0) Log.Warn("Écran virtuel : définition non appliquée, l'image sera mise à l'échelle par l'encodeur");
-        }
-        while (DisplayNative.MonitorFor(name) == IntPtr.Zero && sw.Elapsed < TimeSpan.FromSeconds(8)) Thread.Sleep(100);
-        if (DisplayNative.MonitorFor(name) == IntPtr.Zero)
-            throw new InvalidOperationException("l'écran virtuel ne s'est pas allumé");
-        Log.Info($"Écran virtuel : prêt en {sw.ElapsedMilliseconds} ms, sortie DXGI {DxgiOutput(name)} ; affichage : {DisplayConfig.DescribeActive()}");
-        return name;
-    }
-
-    /// <summary>Éteint l'écran virtuel s'il est sur le bureau (sans élévation). Ne lève jamais d'exception.</summary>
-    public static void Deactivate()
-    {
-        try
-        {
-            if (Detect().State == VddState.NotInstalled) return;
-            try
+            store.Open(OpenFlags.ReadWrite);
+            foreach (var c in certs)
             {
-                var n = DisplayConfig.Remove();
-                if (n > 0) Log.Info($"Écran virtuel : éteint ({n} chemin(s) retiré(s)) ; affichage : {DisplayConfig.DescribeActive()}");
-                return;
+                // Seul le certificat du signataire du pilote (pas les autorités) va dans « Éditeurs approuvés ».
+                if (!c.Subject.Contains("SignPath", StringComparison.OrdinalIgnoreCase)) continue;
+                store.Add(c);
+                Log.Info($"Écran virtuel (élevé) : certificat ajouté aux éditeurs approuvés : {c.Subject} ({c.Thumbprint})");
             }
-            catch (Exception e)
-            {
-                Log.Warn($"Écran virtuel : SetDisplayConfig refusé ({e.Message}), essai par ChangeDisplaySettingsEx");
-            }
-            foreach (var v in DisplayNative.List().Where(d => DisplayLogic.IsVirtual(d) && d.Attached && !d.Primary))
-            {
-                var r = DisplayNative.Detach(v.DeviceName);
-                Log.Info($"Écran virtuel : extinction de {v.DeviceName} {DisplayNative.Describe(r)}");
-            }
+        }
 
-        }
-        catch (Exception e)
-        {
-            Log.Warn($"Écran virtuel : extinction impossible : {Log.Describe(e)}");
-        }
+        var (code, output) = Run(devcon, $"install \"{inf}\" {DisplayLogic.HardwareId}", TimeSpan.FromMinutes(2), drv);
+        Log.Info($"Écran virtuel (élevé) : devcon a rendu {code} : {Tail(output)}");
+        return code is 0 or 1 ? 0 : 4; // 1 = redémarrage conseillé
     }
 
     /// <summary>Adaptateur et index de la sortie DXGI qui porte cet écran (pour le journal).</summary>
@@ -317,7 +290,7 @@ internal static class VirtualDisplay
 
     // ---------------------------------------------------------------- outils
 
-    private static (int Code, string Output) Run(string file, string args, TimeSpan timeout, string? cwd = null)
+    internal static (int Code, string Output) Run(string file, string args, TimeSpan timeout, string? cwd = null)
     {
         try
         {
@@ -332,7 +305,7 @@ internal static class VirtualDisplay
                     WorkingDirectory = cwd ?? Environment.CurrentDirectory,
                 },
             };
-            var sb = new System.Text.StringBuilder();
+            var sb = new StringBuilder();
             p.OutputDataReceived += (_, e) => { if (e.Data != null) lock (sb) sb.AppendLine(e.Data); };
             p.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (sb) sb.AppendLine(e.Data); };
             p.Start();
@@ -353,10 +326,61 @@ internal static class VirtualDisplay
         }
     }
 
-    private static string Tail(string s)
+    internal static string Tail(string s)
     {
         var lines = s.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(l => l.Any(char.IsLetterOrDigit)).TakeLast(4);
         return string.Join(" | ", lines);
+    }
+}
+
+/// <summary>
+/// Implémentation Windows de <see cref="IVirtualDevice"/> : état par SetupAPI, activation et désactivation par les
+/// tâches planifiées créées à la préparation (schtasks /run, sans élévation).
+/// </summary>
+internal sealed class VirtualDevice : IVirtualDevice
+{
+    private static bool? _tasks;
+    private static DateTime _tasksCheckedAt;
+
+    /// <summary>Les tâches viennent d'être créées (ou supprimées) : revérifier.</summary>
+    public static void ForgetTasks() => _tasks = null;
+
+    private static bool TasksExist()
+    {
+        if (_tasks == true || (_tasks == false && DateTime.UtcNow - _tasksCheckedAt < TimeSpan.FromSeconds(30))) return _tasks.Value;
+        var ok = new[] { true, false }.All(on =>
+            VirtualDisplay.Run("schtasks", $"/query /tn \"{DisplayLogic.TaskName(on)}\"", TimeSpan.FromSeconds(15)).Code == 0);
+        _tasks = ok;
+        _tasksCheckedAt = DateTime.UtcNow;
+        return ok;
+    }
+
+    public VddStatus Status()
+    {
+        var st = VirtualDisplay.Detect();
+        if (!st.Installed) return VddStatus.NotInstalled;
+        return TasksExist() ? VddStatus.Ready : VddStatus.NeedsSetup;
+    }
+
+    public bool IsEnabled()
+    {
+        var st = VirtualDisplay.Detect();
+        return st.Installed && st.Problem == 0;
+    }
+
+    public void SetEnabled(bool on)
+    {
+        var (code, output) = VirtualDisplay.Run("schtasks", $"/run /tn \"{DisplayLogic.TaskName(on)}\"", TimeSpan.FromSeconds(15));
+        Log.Info($"Écran virtuel : {(on ? "activation" : "désactivation")} demandée ({code} {VirtualDisplay.Tail(output)})");
+        if (code != 0) throw new InvalidOperationException($"tâche {DisplayLogic.TaskName(on)} non lancée (code {code})");
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed < TimeSpan.FromSeconds(15))
+        {
+            var st = VirtualDisplay.Detect();
+            if (on ? st.Installed && st.Problem == 0 : !st.Installed || st.Problem == DisplayLogic.ProblemDisabled) return;
+            Thread.Sleep(200);
+        }
+        throw new InvalidOperationException(on ? "le pilote ne s'est pas activé" : "le pilote ne s'est pas désactivé");
     }
 }

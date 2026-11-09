@@ -31,6 +31,10 @@ public sealed class StreamSession : IAsyncDisposable
     private VideoConverter? _conv;
     private H264Encoder? _encoder;
     private ScreenCapture? _capture;
+    /// <summary>Protège le remplacement de la capture (Win+P) contre l'arrêt.</summary>
+    private readonly object _captureLock = new();
+    private string? _device;
+    private string _runningStatus = "";
     private AudioLoopback? _audio;
     private System.Threading.Timer? _statsTimer;
     private bool _mfStarted;
@@ -108,9 +112,8 @@ public sealed class StreamSession : IAsyncDisposable
         _encoder.Failed += e => _ = StopAsync(e, raiseEnded: true, status: "Erreur de l'encodeur vidéo : partage arrêté");
         ct.ThrowIfCancellationRequested();
 
-        _capture = new ScreenCapture(_gpu, _clock, _target.DeviceName, _target.Virtual);
-        _capture.FrameArrived += OnFrame;
-        _capture.Closed += () => _ = StopAsync(null, raiseEnded: true, status: "L'écran capturé a disparu : partage arrêté");
+        _device = _target.DeviceName;
+        _capture = NewCapture(_device);
 
         SetStatus($"Connexion à {_box.Name}…");
         _link = new LinkClient();
@@ -152,8 +155,75 @@ public sealed class StreamSession : IAsyncDisposable
         _statsTimer = new System.Threading.Timer(_ => LogStats(), null, 5000, 5000);
         var enc = UsingHardwareEncoder ? $"encodage matériel ({EncoderName})" : $"encodage logiciel ({EncoderName}), plus lent";
         var snd = !_opt.Audio ? "sans son" : AudioActive ? "avec son" : "son indisponible";
-        var what = _target.Virtual ? "écran étendu" : "écran dupliqué";
-        SetStatus($"Partage en cours vers {_box.Name} ({what}) : {_opt.Width}x{_opt.Height} {_opt.Fps} i/s, {enc}, {snd}");
+        _runningStatus = $"Partage en cours vers {_box.Name} : {_opt.Width}x{_opt.Height} {_opt.Fps} i/s, {enc}, {snd}";
+        SetStatus(_runningStatus);
+    }
+
+    private ScreenCapture NewCapture(string? device)
+    {
+        var c = new ScreenCapture(_gpu!, _clock, device, _target.Virtual);
+        c.FrameArrived += OnFrame;
+        c.Closed += () => OnCaptureClosed(c);
+        return c;
+    }
+
+    private void OnCaptureClosed(ScreenCapture c)
+    {
+        if (_stopping) return;
+        lock (_captureLock) if (_capture != c) return; // ancienne capture, déjà remplacée
+        if (_target.Follow == null)
+        {
+            _ = StopAsync(null, raiseEnded: true, status: "L'écran capturé a disparu : partage arrêté");
+            return;
+        }
+        // Écran virtuel : changement d'affichage en cours (Win+P), on suit dès qu'il est terminé.
+        Log.Info("Capture : écran de la TV fermé (changement d'affichage), on suit");
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(500);
+            FollowTarget(force: true);
+        });
+    }
+
+    /// <summary>
+    /// Après un changement d'affichage (Win+P, Paramètres) : capture l'écran qui montre maintenant la TV, sans couper la
+    /// liaison avec la box. Sans effet hors écran virtuel. Appelable depuis n'importe quel fil.
+    /// </summary>
+    public void FollowTarget(bool force = false)
+    {
+        // Avant la fin du démarrage, rien à suivre : la capture initiale n'est pas encore lancée.
+        if (_target.Follow == null || _gpu == null || _runningStatus.Length == 0) return;
+        lock (_captureLock)
+        {
+            if (_stopping) return;
+            string? device;
+            try { device = _target.Follow(); }
+            catch (Exception e) { Log.Warn($"Capture : écran de la TV introuvable : {Log.Describe(e)}"); return; }
+            if (!force && device == _device && _capture != null) return;
+            Log.Info($"Capture : la TV passe de {_device ?? "(rien)"} à {device ?? "(rien)"}");
+            var old = _capture;
+            _capture = null;
+            _device = device;
+            try { old?.Dispose(); } catch (Exception e) { Log.Warn($"Capture : fermeture : {Log.Describe(e)}"); }
+            if (device == null)
+            {
+                SetStatus("Windows n'affiche plus la TV (Win+P › Écran du PC uniquement) : la box garde la dernière image");
+                return;
+            }
+            try
+            {
+                var c = NewCapture(device);
+                c.Start();
+                _capture = c;
+                _encoder?.RequestKeyFrame();
+                if (_runningStatus.Length > 0) SetStatus(_runningStatus);
+            }
+            catch (Exception e)
+            {
+                Log.Error($"Capture : {device} impossible à capturer", e);
+                SetStatus("L'écran de la TV ne peut pas être capturé pour l'instant");
+            }
+        }
     }
 
     // Fil du pool de capture : rendre la main vite.
@@ -249,7 +319,9 @@ public sealed class StreamSession : IAsyncDisposable
         Log.Info($"Session : arrêt ({status ?? "demandé"})");
         try { _statsTimer?.Dispose(); } catch { }
         LogStatsFinal();
-        try { _capture?.Dispose(); } catch (Exception e) { Log.Warn($"Arrêt capture : {Log.Describe(e)}"); }
+        ScreenCapture? capture;
+        lock (_captureLock) { capture = _capture; _capture = null; }
+        try { capture?.Dispose(); } catch (Exception e) { Log.Warn($"Arrêt capture : {Log.Describe(e)}"); }
         try { _audio?.Dispose(); } catch (Exception e) { Log.Warn($"Arrêt son : {Log.Describe(e)}"); }
         if (_encoder != null && !_encoder.Stop(TimeSpan.FromSeconds(2)) && _link != null)
         {

@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using KairoCast.App.Shell;
+using KairoCast.App.Display;
 
 namespace KairoCast.App.Ui;
 
@@ -10,6 +10,8 @@ public sealed class CastPanel : Form
     private readonly LinkLabel _others = new();
     private readonly Button _duplicate = new();
     private readonly Button _extend = new();
+    private readonly FlowLayoutPanel _modes = new() { FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoSize = true, Visible = false };
+    private readonly LinkLabel _vddHint = new() { AutoSize = false, Visible = false, LinkColor = Color.FromArgb(120, 170, 255) };
     private readonly System.Windows.Forms.Timer _watch = new() { Interval = 80 };
     private DateTime _shownAt;
     private bool _wasActive;
@@ -41,9 +43,9 @@ public sealed class CastPanel : Form
         Font = new Font("Segoe UI", 9.5f);
 
         var title = new Label { Text = "Partager l'écran vers…", AutoSize = true, Font = new Font("Segoe UI Semibold", 11f), ForeColor = Color.White, Margin = new Padding(0, 0, 0, 6) };
-        // Comme le panneau Win+K de Windows : Dupliquer ou Étendre, appliqué aussi à un partage en cours.
-        var modes = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoSize = true, Margin = new Padding(0, 0, 0, 8) };
-        foreach (var (b, text, mode) in new[] { (_duplicate, "Dupliquer", ShareMode.Duplicate), (_extend, "Étendre", ShareMode.Extend) })
+        // Pendant un partage avec l'écran virtuel : raccourci de Win+P pour la TV seule (les autres écrans ne bougent pas).
+        _modes.Margin = new Padding(0, 0, 0, 8);
+        foreach (var (b, text, mode) in new[] { (_duplicate, "Dupliquer", TvLayout.Duplicate), (_extend, "Étendre", TvLayout.Extend) })
         {
             b.Text = text;
             b.FlatStyle = FlatStyle.Flat;
@@ -53,9 +55,13 @@ public sealed class CastPanel : Form
             b.Size = new Size(LogicalToDeviceUnits(156), LogicalToDeviceUnits(30));
             b.Margin = new Padding(0, 0, LogicalToDeviceUnits(8), 0);
             b.Cursor = Cursors.Hand;
-            b.Click += (_, _) => controller.SetShareMode(mode);
-            modes.Controls.Add(b);
+            b.Click += async (_, _) => await controller.SetTvLayoutAsync(mode);
+            _modes.Controls.Add(b);
         }
+        _vddHint.Text = "Pour choisir Dupliquer ou Étendre (Win+P) avec la TV : installer l'écran virtuel…";
+        _vddHint.Size = new Size(LogicalToDeviceUnits(320), LogicalToDeviceUnits(36));
+        _vddHint.Margin = new Padding(0, 0, 0, 6);
+        _vddHint.LinkClicked += async (_, _) => { Hide(); await controller.SetupVirtualDisplayAsync(); };
         var list = new BoxListControl(controller, 320, Color.White);
         _state.AutoSize = false; _state.Width = LogicalToDeviceUnits(320); _state.Height = LogicalToDeviceUnits(22); _state.ForeColor = Color.FromArgb(160, 170, 190);
         _state.Margin = new Padding(0, 6, 0, 2);
@@ -66,12 +72,12 @@ public sealed class CastPanel : Form
         _others.LinkClicked += (_, _) => { Hide(); OthersRequested?.Invoke(); };
 
         var flow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill };
-        flow.Controls.AddRange(new Control[] { title, modes, list, _state, _others });
+        flow.Controls.AddRange(new Control[] { title, _modes, _vddHint, list, _state, _others });
         Controls.Add(flow);
 
-        controller.Changed += () => { _state.Text = controller.State; ShowMode(controller.Settings.ShareMode); if (Visible) BeginInvoke(Reposition); };
+        controller.Changed += () => { _state.Text = controller.State; ShowMode(controller); if (Visible) BeginInvoke(Reposition); };
         _state.Text = controller.State;
-        ShowMode(controller.Settings.ShareMode);
+        ShowMode(controller);
         KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Hide(); };
         Activated += (_, _) => _wasActive = true;
         Deactivate += (_, _) => { if (Visible) Hide(); };
@@ -88,16 +94,19 @@ public sealed class CastPanel : Form
         };
     }
 
-    private void ShowMode(ShareMode mode)
+    private void ShowMode(AppController c)
     {
+        var layout = c.TvLayout;
         var accent = Color.FromArgb(37, 99, 235);
         var idle = Color.FromArgb(48, 50, 58);
-        _duplicate.BackColor = mode == ShareMode.Duplicate ? accent : idle;
-        _extend.BackColor = mode == ShareMode.Extend ? accent : idle;
+        _modes.Visible = layout != TvLayout.Off;
+        _duplicate.BackColor = layout == TvLayout.Duplicate ? accent : idle;
+        _extend.BackColor = layout is TvLayout.Extend or TvLayout.Only ? accent : idle;
+        _vddHint.Visible = layout == TvLayout.Off && c.Settings.UseVirtualDisplay && !c.VirtualSetupRunning
+                           && c.VirtualStatus is VddStatus.NotInstalled or VddStatus.NeedsSetup;
     }
 
     protected override CreateParams CreateParams
-
     {
         get
         {
