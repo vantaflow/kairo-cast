@@ -10,6 +10,8 @@ internal sealed class FakeDisplay : IDisplaySystem
     public bool Connected;
     public VirtualInfo? Current;
     public bool RefuseClone, RefuseRestore, RefuseDatabase;
+    /// <summary>Nombre de recopies refusées avant d'être acceptées (Windows pas encore prêt).</summary>
+    public int RefuseCloneTimes;
     /// <summary>Simule Windows qui réapplique une autre disposition au départ du moniteur virtuel.</summary>
     public string? LayoutAfterDisable;
     public List<WindowDesc> Wins = new();
@@ -38,7 +40,7 @@ internal sealed class FakeDisplay : IDisplaySystem
     public void PlaceVirtual(DisplaySnapshot? basis, TvLayout layout, string? cloneOf, int width, int height)
     {
         Calls.Add($"place {layout} {(basis == null ? "actuelle" : "sauvegarde")} {cloneOf ?? "principal"} {width}x{height}");
-        if (layout == TvLayout.Duplicate && RefuseClone) throw new InvalidOperationException("recopie refusée");
+        if (layout == TvLayout.Duplicate && (RefuseClone || RefuseCloneTimes-- > 0)) throw new InvalidOperationException("recopie refusée");
         Current = layout == TvLayout.Duplicate
             ? new VirtualInfo(cloneOf ?? @"\\.\DISPLAY1", new DisplayRect(0, 0, 1920, 1080), layout)
             : new VirtualInfo(@"\\.\DISPLAY5", new DisplayRect(1920, 0, 1920, 1080), layout);
@@ -194,12 +196,25 @@ public class VirtualScreenTests
     }
 
     [Fact]
-    public void RefusedCloneFallsBackToExtendKeepingTheOtherScreens()
+    public void RefusedCloneNeverExtendsAndPutsEverythingBack()
     {
         _d.RefuseClone = true;
-        Assert.Equal(@"\\.\DISPLAY5", _vs.Start(1920, 1080, null));
-        Assert.Contains("place Extend sauvegarde principal 1920x1080", _d.Calls);
-        Assert.Equal("PC+HDMI clone +TV Extend", _d.Layout);
+        Assert.Throws<InvalidOperationException>(() => _vs.Start(1920, 1080, null));
+        Assert.DoesNotContain(_d.Calls, c => c.StartsWith("place Extend"));
+        Assert.Equal(VirtualScreen.CloneAttempts, _d.Calls.Count(c => c.StartsWith("place Duplicate")));
+        Assert.Equal("PC+HDMI clone", _d.Layout);
+        Assert.False(_dev.Enabled);
+        Assert.False(_vs.Active);
+        Assert.Null(_store.Value);
+    }
+
+    [Fact]
+    public void CloneIsRetriedWhileWindowsIsNotReadyYet()
+    {
+        _d.RefuseCloneTimes = 2;
+        Assert.Equal(@"\\.\DISPLAY1", _vs.Start(1920, 1080, null));
+        Assert.Equal(3, _d.Calls.Count(c => c.StartsWith("place Duplicate")));
+        Assert.Equal("PC+HDMI clone +TV Duplicate", _d.Layout);
     }
 
     [Fact]

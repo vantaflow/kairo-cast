@@ -308,9 +308,19 @@ public sealed class AppController : IDisposable
             _virtualOn = true;
             var screen = Settings.DuplicateScreen;
             var vs = VirtualDisplay.Screen;
-            var device = await Task.Run(() => vs.Start(opt.Width, opt.Height, screen), ct);
-            _tvLayout = await Task.Run(vs.Layout);
-            return new CaptureTarget(device, true, vs.CaptureDevice);
+            try
+            {
+                var device = await Task.Run(() => vs.Start(opt.Width, opt.Height, screen), ct);
+                _tvLayout = await Task.Run(vs.Layout);
+                return new CaptureTarget(device, true, vs.CaptureDevice);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // L'affichage a été remis comme avant : partage classique, sans toucher aux écrans.
+                Log.Warn($"Écran virtuel : indisponible pour ce partage ({Log.Describe(e)}), recopie de l'écran sans écran virtuel");
+                _virtualOn = false;
+                _tvLayout = TvLayout.Off;
+            }
         }
         if (string.IsNullOrEmpty(Settings.DuplicateScreen)) return CaptureTarget.Primary;
         var name = DisplayLogic.DuplicateTarget(DisplayNative.List(), Settings.DuplicateScreen);

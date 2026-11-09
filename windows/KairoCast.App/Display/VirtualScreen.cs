@@ -119,6 +119,8 @@ public sealed class VirtualScreen
     private readonly Action<string> _log;
     private readonly Action<TimeSpan> _sleep;
     private readonly TimeSpan _timeout;
+    /// <summary>Essais de mise en recopie avant d'abandonner l'écran virtuel pour ce partage.</summary>
+    public const int CloneAttempts = 6;
     private readonly object _lock = new();
     private DisplaySnapshot? _saved;
     private int _width = 1920, _height = 1080;
@@ -176,15 +178,21 @@ public sealed class VirtualScreen
                 _device.SetEnabled(true);
                 if (!WaitFor(_display.VirtualConnected))
                     throw new InvalidOperationException("l'écran virtuel n'apparaît pas (le pilote ne répond pas)");
-                try
+                // Juste après l'activation, Windows peut ne pas encore proposer la recopie : quelques essais.
+                // Jamais d'Étendre imposé : si la recopie reste refusée, tout est remis comme avant (catch plus bas)
+                // et l'appelant partage l'écran sans écran virtuel.
+                for (var attempt = 1; ; attempt++)
                 {
-                    _display.PlaceVirtual(snap, TvLayout.Duplicate, cloneOf, width, height);
-                }
-                catch (Exception e)
-                {
-                    // Recopie refusée (cas rare : carte graphique) : écran à part, les autres écrans restent tels quels.
-                    _log($"Écran virtuel : recopie impossible ({e.Message}), écran étendu à la place");
-                    _display.PlaceVirtual(snap, TvLayout.Extend, null, width, height);
+                    try
+                    {
+                        _display.PlaceVirtual(snap, TvLayout.Duplicate, cloneOf, width, height);
+                        break;
+                    }
+                    catch (Exception e) when (attempt < CloneAttempts)
+                    {
+                        _log($"Écran virtuel : recopie refusée (essai {attempt}/{CloneAttempts} : {e.Message}), nouvel essai");
+                        _sleep(TimeSpan.FromMilliseconds(500));
+                    }
                 }
                 VirtualInfo? v = null;
                 if (!WaitFor(() => (v = _display.Virtual()) != null))
