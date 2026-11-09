@@ -54,8 +54,13 @@ public sealed class MainForm : Form
         }
         add.Click += (_, _) => DoAdd();
         ip.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; DoAdd(); } };
-        var addRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 6, 0, 0) };
+        var addRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 6, 0, 0), Visible = false };
         addRow.Controls.AddRange(new Control[] { ip, add });
+        // Secours seulement : la box apparaît d'elle-même dans la liste ; l'adresse ne sert que si la
+        // découverte est bloquée (VPN, routeur sans multicast, autre sous-réseau).
+        var manualLink = new LinkLabel { Text = "Box introuvable ? Ajouter par adresse IP", AutoSize = true, Margin = new Padding(0, 6, 0, 0) };
+        manualLink.LinkClicked += (_, _) => { manualLink.Visible = false; addRow.Visible = true; ip.Focus(); };
+        flow.Controls.Add(manualLink);
         flow.Controls.Add(addRow);
         flow.Controls.Add(addError);
 

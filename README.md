@@ -1,69 +1,133 @@
 # Kairo Cast
 
-[![Dernière version](https://img.shields.io/github/v/release/vantaflow/kairo-cast?label=version&color=2563eb)](https://github.com/vantaflow/kairo-cast/releases/latest) ![Android TV 11+](https://img.shields.io/badge/Android%20TV-11%2B-3ddc84) ![Code Downloader 2534592](https://img.shields.io/badge/Downloader-2534592-f97316)
+[![Dernière version](https://img.shields.io/github/v/release/vantaflow/kairo-cast?label=version&color=2563eb)](https://github.com/vantaflow/kairo-cast/releases/latest) ![Android TV 11+](https://img.shields.io/badge/Android%20TV-11%2B-3ddc84) ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4) ![Code Downloader 2534592](https://img.shields.io/badge/Downloader-2534592-f97316)
 
-Récepteur AirPlay de recopie d'écran pour Android TV, compagnon de Kairo. Il permet d'afficher l'écran d'un Mac (image jusqu'en 4K et son) sur une box ou un téléviseur Android TV.
+**L'écran du Mac, de l'iPhone ou du PC Windows sur la TV**, avec le son, sans limite de durée et sans abonnement. Kairo Cast est un récepteur de recopie d'écran pour Android TV, compagnon du launcher [Kairo](https://github.com/vantaflow/kairo). Il peut afficher jusqu'à **quatre écrans à la fois** en mosaïque.
 
-## Utilisation
+| Appareil qui envoie | Comment | Ce qu'il faut |
+|---|---|---|
+| Mac, iPhone, iPad | AirPlay, intégré au système | rien à installer |
+| PC Windows 10/11 | appli **Kairo Cast pour Windows** | [KairoCast.exe](https://github.com/vantaflow/kairo-cast/releases/latest/download/KairoCast.exe) |
 
-1. Installer l'application sur la box et l'ouvrir une fois : elle démarre ensuite toute seule avec la box.
-2. Sur le Mac : **Centre de contrôle › Recopie de l'écran › Kairo** (ou le nom choisi dans les réglages).
-3. La recopie s'affiche en plein écran sur la TV. Pendant la recopie, la touche **OK** de la télécommande ouvre un petit menu.
-
-**Kairo Link (Windows)** : un seul émetteur à la fois, le dernier arrivé l'emporte. Si une session Windows prend la main pendant que le Mac est connecté, puis se termine, l'image du Mac ne revient pas toute seule (AirPlay ne permet pas de redemander une image) : l'accueil affiche « Mac en attente : relancez la recopie depuis le Mac ».
-
-Kairo Link, comme AirPlay sans code, accepte n'importe quel appareil du réseau local.
-
-### Réglages
-
-- **Nom du récepteur** : nom visible sur le Mac.
-- **Netteté** : 1080p, 1440p (par défaut) ou 4K. Plus c'est net, plus la box et le réseau sont sollicités.
-- **Affichage** : *Étirer* (par défaut, remplit l'écran), *Remplir* (rogne les bords) ou *Ajuster* (bandes noires, proportions conservées).
-- **Son** : activé ou non.
-- **Démarrage avec la box** : lance le récepteur au démarrage.
-- **Afficher par-dessus les autres applis** : autorisation nécessaire pour que la recopie s'ouvre au-dessus d'une autre application.
+Sommaire : [Installation](#installation) · [Depuis un Mac ou un iPhone](#depuis-un-mac-ou-un-iphone) · [Depuis un PC Windows](#depuis-un-pc-windows) · [Plusieurs sources](#plusieurs-sources-mosaïque) · [Télécommande](#télécommande-pendant-la-recopie) · [Réglages](#réglages-de-la-box) · [Dépannage](#dépannage) · [Compilation](#compilation) · [Licence](#licence-et-crédits)
 
 ## Installation
 
-Sur n'importe quelle TV ou box Android TV 11+ :
+### Sur la TV ou la box (Android TV 11 ou plus récent)
 
 - **Downloader** : code **2534592**.
-- **Lien direct** (toujours la dernière version) : https://github.com/vantaflow/kairo-cast/releases/latest/download/kairo-cast.apk
+- **Lien direct** (toujours la dernière version) : <https://github.com/vantaflow/kairo-cast/releases/latest/download/kairo-cast.apk>
+- **Depuis Kairo** : proposée dans l'assistant de premier lancement et dans « Nos applications », installée en un clic.
 
-Avec `adb` (la box doit accepter le débogage réseau) :
+Ouvrir l'application une fois : elle démarre ensuite toute seule avec la box et reste prête à recevoir. L'écran d'accueil affiche le nom du récepteur, son adresse IP et l'état de chaque source.
 
-```
-adb connect 192.168.0.62:5555
-adb install -r app/build/outputs/apk/release/app-release.apk
-adb shell appops set com.vantaflow.kairo.cast SYSTEM_ALERT_WINDOW allow
-adb shell pm grant com.vantaflow.kairo.cast android.permission.POST_NOTIFICATIONS
-```
+Une autorisation est à accorder une fois pour que la recopie s'ouvre par-dessus une autre application : **Réglages › Afficher par-dessus les autres applis** (ou, par ADB : `adb shell appops set com.vantaflow.kairo.cast SYSTEM_ALERT_WINDOW allow`).
 
-Ou en une commande (compile, installe, autorise, lance) :
+> Depuis la 1.1.0, l'application est signée avec la clé Kairo. Si l'installation par-dessus la 1.0.0 est refusée, désinstaller d'abord Kairo Cast (les réglages repartent à zéro une seule fois).
 
-```
-scripts/deploy.sh 192.168.0.62
-```
+### Sur le PC Windows
 
-La version release est signée avec la clé de debug, ou avec `keystore.properties` (non versionné : `storeFile`, `storePassword`, `keyAlias`, `keyPassword`) s'il existe.
+Télécharger **[KairoCast.exe](https://github.com/vantaflow/kairo-cast/releases/latest/download/KairoCast.exe)** et le lancer : rien à installer, aucun composant supplémentaire.
+
+- **Prérequis** : Windows 10 version 1903 ou plus récent, ou Windows 11, 64 bits.
+- L'exécutable n'est pas signé : SmartScreen affiche un avertissement la première fois, cliquer sur **Informations complémentaires › Exécuter quand même**.
+- Au premier partage, Windows demande d'autoriser l'appli sur le réseau : accepter **Réseau privé** (sinon la box n'est pas trouvée).
+
+## Depuis un Mac ou un iPhone
+
+1. **Centre de contrôle › Recopie de l'écran › Kairo** (ou le nom choisi dans les réglages de la box).
+2. La recopie s'ouvre en plein écran sur la TV, le son suit.
+3. Pour arrêter : même menu, **Arrêter la recopie**.
+
+La définition annoncée au Mac dépend du réglage **Netteté** et du nombre de sources ; le Mac adapte sa propre résolution pendant la recopie.
+
+## Depuis un PC Windows
+
+Windows ne sait pas envoyer son écran à un récepteur AirPlay, et une appli Android ne peut pas recevoir le Miracast natif de Windows : d'où **Kairo Cast pour Windows**, qui capture l'écran et le son du PC et les envoie à la box par le réseau local (protocole Kairo Link).
+
+1. Lancer **KairoCast.exe** : l'appli se place près de l'horloge (zone de notification).
+2. Appuyer sur **Win+K** (ou cliquer sur l'icône) : le panneau « Partager l'écran vers… » liste les box Kairo du réseau.
+3. Cliquer sur **Partager** à côté de la box. Le même bouton arrête le partage.
+
+Fenêtre principale (clic sur l'icône) :
+
+- **Box Kairo** : les box trouvées automatiquement sur le réseau. Si une box n'apparaît pas (VPN, routeur qui bloque la découverte, autre sous-réseau), le lien **Box introuvable ? Ajouter par adresse IP** permet de la saisir (l'adresse est affichée sur l'accueil de Kairo Cast).
+- **Qualité** : 1080p 30 i/s (par défaut, le plus sûr), 1080p 60 i/s (plus fluide) ou 1440p 30 i/s (plus net). L'encodage utilise la carte graphique ; l'encodeur utilisé s'affiche sous l'état.
+- **Envoyer le son** : le son du PC passe sur la TV.
+- **Remplacer Win+K** : Win+K ouvre le panneau Kairo, avec un lien **Autres écrans (Windows)…** vers le panneau natif ; décoché, le raccourci devient **Win+Alt+K**.
+- **Démarrer avec Windows**.
+- Fermer la fenêtre la réduit près de l'horloge ; **Quitter** depuis le menu de l'icône.
+
+Journal en cas de problème : `%LOCALAPPDATA%\KairoCast\log.txt`.
+
+## Plusieurs sources (mosaïque)
+
+Dans les réglages de la box, **Nombre de sources** (1 à 4) crée autant de récepteurs, chacun avec son propre nom, visible sur le Mac, l'iPhone et le PC. Plusieurs appareils peuvent alors recopier en même temps :
+
+- **Mosaïque** : *Remplir l'écran* (par défaut, sans bandes) ou *Formats exacts* (chaque source garde son format, sans déformation ni recadrage).
+- **Netteté automatique** : avec 2 sources, 1800p ; avec 3 ou 4, 800p. Si la box ne peut pas décoder une source de plus, la tuile indique « Trop de sources ».
+- **Son des sources** : une seule source est audible à la fois. Par défaut le son **suit la tuile sélectionnée** ; on peut aussi l'attacher à une source précise (réglage, ou touche Menu sur la tuile).
+
+Avec une seule source, un émetteur à la fois : le dernier arrivé l'emporte. Si un PC prend la main pendant que le Mac est connecté, puis s'arrête, l'image du Mac ne revient pas d'elle-même (AirPlay ne permet pas de redemander une image) : l'accueil affiche « Mac en attente : relancez la recopie depuis le Mac ».
+
+## Télécommande pendant la recopie
+
+| Touche | Une source | Plusieurs sources |
+|---|---|---|
+| Flèches | — | déplacer la sélection entre les tuiles |
+| OK | changer l'affichage (Étirer / Remplir / Ajuster) | agrandir ou réduire la tuile sélectionnée |
+| Menu | changer l'affichage | rendre audible la tuile sélectionnée |
+
+Retour ramène à l'accueil ; la recopie continue et **Reprendre la recopie** la réaffiche.
+
+## Réglages de la box
+
+- **Nom du récepteur** (un nom par source) : nom visible sur le Mac, l'iPhone et le PC. Deux sources ne peuvent pas porter le même nom.
+- **Netteté** : Standard (1200p), Haute (1600p, par défaut) ou Maximale (2160p). Plus c'est net, plus la box et le réseau travaillent. Avec plusieurs sources, la netteté est fixée automatiquement.
+- **Affichage** (une source seule) : *Étirer* (remplit l'écran pour les formats proches du 16:9), *Remplir* (rogne les bords) ou *Ajuster* (bandes noires, proportions conservées).
+- **Nombre de sources**, **Mosaïque**, **Son des sources** : voir [Plusieurs sources](#plusieurs-sources-mosaïque).
+- **Son** : activé ou non.
+- **Démarrage avec la box** : le récepteur se lance au démarrage.
+- **Afficher par-dessus les autres applis** : autorisation nécessaire pour que la recopie s'ouvre au-dessus d'une autre application.
+
+## Dépannage
+
+- **La box n'apparaît pas sur le PC** : ouvrir Kairo Cast au moins une fois sur la box, vérifier que le PC est sur le même réseau et que Windows a autorisé l'appli sur le **réseau privé** ; sinon, ajouter la box par son adresse IP.
+- **« Partage impossible : aucune connexion n'a pu être établie »** : la box est en veille ou l'application redémarre ; réveiller la box et réessayer.
+- **Image saccadée** : choisir 1080p 30 i/s sur le PC, rapprocher la box du routeur ou la brancher en Ethernet.
+- **Pas de son** : vérifier **Son** sur la box et **Envoyer le son** sur le PC ; avec plusieurs sources, sélectionner la tuile qui doit être audible.
+- **La recopie ne s'ouvre pas au-dessus d'une autre appli** : accorder **Afficher par-dessus les autres applis**.
 
 ## Compilation
 
-JDK 17, SDK Android 34, NDK 27.2.12479018 :
+Application Android : JDK 17, SDK Android 34, NDK 27.2.12479018.
 
 ```
 ./gradlew :app:testDebugUnitTest :app:assembleRelease
 ```
 
-## Windows
+La release est signée avec `keystore.properties` (non versionné : `storeFile`, `storePassword`, `keyAlias`, `keyPassword`) s'il existe, sinon avec la clé de debug. `scripts/sign-apk.sh <entrée.apk> <sortie.apk>` signe avec cette clé un APK déjà compilé (par exemple celui de la CI).
 
-Kairo Cast existe aussi pour Windows : une petite appli qui envoie l'écran et le son du PC vers la box. Windows ne sait pas envoyer l'écran vers un récepteur AirPlay, d'où cette appli. Le Miracast natif de Windows vers la box n'est pas possible : une appli Android ne peut pas être récepteur Miracast sans droits système.
+Installation sur une box par ADB (débogage réseau activé) :
 
-- **Installation** : télécharger **[KairoCast.exe](https://github.com/vantaflow/kairo-cast/releases/latest/download/KairoCast.exe)** (rien à installer). Il n'est pas signé : SmartScreen affiche un avertissement, cliquer sur « Informations complémentaires › Exécuter quand même ».
-- **Utilisation** : l'appli KairoCast intercepte Win+K et ouvre son propre panneau, où Kairo apparaît en premier (avec un lien vers le panneau natif de Windows). On peut aussi utiliser l'icône près de l'horloge.
-- **Pare-feu** : au premier partage, Windows demande d'autoriser l'appli ; accepter « Réseau privé ».
-- **Prérequis** : Windows 10 1903 ou plus récent, ou Windows 11.
-- **Journal** : `%LOCALAPPDATA%\KairoCast\log.txt`.
+```
+scripts/deploy.sh <IP de la box>
+```
+
+Application Windows (.NET 8, dossier `windows/`) :
+
+```
+cd windows
+dotnet test
+dotnet publish KairoCast.App -c Release
+```
+
+La CI GitHub compile les deux à chaque envoi (artefacts `kairo-cast-release` et `KairoCast-windows`).
+
+### Fonctionnement
+
+- **AirPlay** : serveur natif basé sur UxPlay, un par source, annoncé en mDNS (`_airplay._tcp`, `_raop._tcp`). Vidéo H.264 décodée par le matériel de la box, son AAC.
+- **Kairo Link** (Windows) : la box annonce `_kairocast._tcp` ; le PC capture l'écran (Desktop Duplication), l'encode en H.264 par la carte graphique et l'envoie en TCP, avec le son en PCM. Comme AirPlay sans code, Kairo Link accepte n'importe quel appareil du réseau local.
 
 ## Licence et crédits
 
