@@ -22,7 +22,23 @@ public sealed class AppController : IDisposable
     private readonly EarlyEndGate<StreamSession> _gate = new();
 
     public AppSettings Settings { get; }
-    public IReadOnlyList<BoxInfo> Boxes => _boxes;
+    /// <summary>Box à afficher : manuelles, et découvertes sur un réseau actuel du PC.</summary>
+    public IReadOnlyList<BoxInfo> Boxes => BoxDisplay.Visible(_boxes, IsManual, BoxDisplay.LocalNetworks());
+
+    public bool IsManual(BoxInfo b) => _manual.Any(m => Same(m, b));
+
+    /// <summary>Retire une box ajoutée à la main (liste et réglages).</summary>
+    public void RemoveManual(BoxInfo b)
+    {
+        if (IsActive(b)) return;
+        _manual.RemoveWhere(m => Same(m, b));
+        _boxes.RemoveAll(x => Same(x, b));
+        var plain = b.Address.ToString();
+        var withPort = $"{b.Address}:{b.Port}";
+        Settings.ManualBoxes.RemoveAll(e => e == withPort || (e == plain && b.Port == ManualAddress.DefaultPort));
+        Settings.Save();
+        Changed?.Invoke();
+    }
     public BoxInfo? Active { get; private set; }
     public bool Busy { get; private set; }
     public string EncoderText { get; private set; } = "";
@@ -34,10 +50,12 @@ public sealed class AppController : IDisposable
         Settings = settings;
     }
 
-    public string State => _sessionState ?? (_boxes.Count == 0 ? _discoveryState : "Prêt à partager");
+    public string State => _sessionState ?? (Boxes.Count == 0 ? _discoveryState : "Prêt à partager");
 
     public void Start()
     {
+        // Changement de réseau : la liste visible change (box de l'ancien réseau masquées).
+        System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += (_, _) => _ui.Post(_ => Changed?.Invoke(), null);
         foreach (var m in Settings.ManualBoxes.ToList())
             if (ManualAddress.TryParse(m, out var ip, out var port)) AddBox(new BoxInfo(ip.ToString(), ip, port), manual: true);
         try
