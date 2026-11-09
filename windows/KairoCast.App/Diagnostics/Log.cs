@@ -13,6 +13,7 @@ internal static class Log
     private const long MaxBytes = 5 * 1024 * 1024;
     private static readonly object Lock = new();
     private static StreamWriter? _writer;
+    private static FileStream? _stream;
     private static bool _opened;
 
     public static bool ToConsole { get; set; }
@@ -52,7 +53,13 @@ internal static class Log
             try
             {
                 if (!_opened) Open();
-                _writer?.WriteLine(line);
+                // Une autre instance (installation élevée de l'écran virtuel) peut écrire dans le même fichier :
+                // on écrit toujours à la fin réelle, sans écraser ses lignes.
+                if (_stream != null && _writer != null)
+                {
+                    _stream.Seek(0, SeekOrigin.End);
+                    _writer.WriteLine(line);
+                }
             }
             catch { /* le journal ne doit jamais faire tomber l'application */ }
         }
@@ -71,6 +78,8 @@ internal static class Log
         }
         catch { }
         var fs = new FileStream(FilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        _stream = fs;
         _writer = new StreamWriter(fs, new UTF8Encoding(false)) { AutoFlush = true };
+
     }
 }

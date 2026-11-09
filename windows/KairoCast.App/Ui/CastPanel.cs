@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using KairoCast.App.Shell;
 
 namespace KairoCast.App.Ui;
 
@@ -7,6 +8,8 @@ public sealed class CastPanel : Form
 {
     private readonly Label _state = new();
     private readonly LinkLabel _others = new();
+    private readonly Button _duplicate = new();
+    private readonly Button _extend = new();
     private readonly System.Windows.Forms.Timer _watch = new() { Interval = 80 };
     private DateTime _shownAt;
     private bool _wasActive;
@@ -38,6 +41,21 @@ public sealed class CastPanel : Form
         Font = new Font("Segoe UI", 9.5f);
 
         var title = new Label { Text = "Partager l'écran vers…", AutoSize = true, Font = new Font("Segoe UI Semibold", 11f), ForeColor = Color.White, Margin = new Padding(0, 0, 0, 6) };
+        // Comme le panneau Win+K de Windows : Dupliquer ou Étendre, appliqué aussi à un partage en cours.
+        var modes = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, WrapContents = false, AutoSize = true, Margin = new Padding(0, 0, 0, 8) };
+        foreach (var (b, text, mode) in new[] { (_duplicate, "Dupliquer", ShareMode.Duplicate), (_extend, "Étendre", ShareMode.Extend) })
+        {
+            b.Text = text;
+            b.FlatStyle = FlatStyle.Flat;
+            b.FlatAppearance.BorderColor = Color.FromArgb(70, 75, 90);
+            b.ForeColor = Color.White;
+            b.AutoSize = false;
+            b.Size = new Size(LogicalToDeviceUnits(156), LogicalToDeviceUnits(30));
+            b.Margin = new Padding(0, 0, LogicalToDeviceUnits(8), 0);
+            b.Cursor = Cursors.Hand;
+            b.Click += (_, _) => controller.SetShareMode(mode);
+            modes.Controls.Add(b);
+        }
         var list = new BoxListControl(controller, 320, Color.White);
         _state.AutoSize = false; _state.Width = LogicalToDeviceUnits(320); _state.Height = LogicalToDeviceUnits(22); _state.ForeColor = Color.FromArgb(160, 170, 190);
         _state.Margin = new Padding(0, 6, 0, 2);
@@ -48,11 +66,12 @@ public sealed class CastPanel : Form
         _others.LinkClicked += (_, _) => { Hide(); OthersRequested?.Invoke(); };
 
         var flow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill };
-        flow.Controls.AddRange(new Control[] { title, list, _state, _others });
+        flow.Controls.AddRange(new Control[] { title, modes, list, _state, _others });
         Controls.Add(flow);
 
-        controller.Changed += () => { _state.Text = controller.State; if (Visible) BeginInvoke(Reposition); };
+        controller.Changed += () => { _state.Text = controller.State; ShowMode(controller.Settings.ShareMode); if (Visible) BeginInvoke(Reposition); };
         _state.Text = controller.State;
+        ShowMode(controller.Settings.ShareMode);
         KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Hide(); };
         Activated += (_, _) => _wasActive = true;
         Deactivate += (_, _) => { if (Visible) Hide(); };
@@ -69,7 +88,16 @@ public sealed class CastPanel : Form
         };
     }
 
+    private void ShowMode(ShareMode mode)
+    {
+        var accent = Color.FromArgb(37, 99, 235);
+        var idle = Color.FromArgb(48, 50, 58);
+        _duplicate.BackColor = mode == ShareMode.Duplicate ? accent : idle;
+        _extend.BackColor = mode == ShareMode.Extend ? accent : idle;
+    }
+
     protected override CreateParams CreateParams
+
     {
         get
         {

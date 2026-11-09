@@ -17,6 +17,44 @@ public class SettingsTests
         Assert.False(s.FirewallAsked);
         Assert.Equal(QualityPreset.P1080F30, s.Quality);
         Assert.Empty(s.ManualBoxes);
+        Assert.Equal(ShareMode.Duplicate, s.ShareMode);
+        Assert.Null(s.DuplicateScreen);
+        Assert.False(s.VirtualDisplayOn);
+    }
+
+    [Fact]
+    public void ShareModeRoundTrip()
+    {
+        var path = Tmp();
+        var s = new AppSettings { ShareMode = ShareMode.Extend, DuplicateScreen = @"\\.\DISPLAY2", VirtualDisplayOn = true };
+        Assert.True(s.Save(path));
+        Assert.Contains("\"Extend\"", File.ReadAllText(path));
+        var r = AppSettings.Load(path);
+        Assert.Equal(ShareMode.Extend, r.ShareMode);
+        Assert.Equal(@"\\.\DISPLAY2", r.DuplicateScreen);
+        Assert.True(r.VirtualDisplayOn);
+    }
+
+    [Theory]
+    [InlineData("{\"ShareMode\":\"Inconnu\"}")]
+    [InlineData("{\"ShareMode\":7}")]
+    public void InvalidShareModeGivesDuplicate(string content)
+    {
+        var path = Tmp();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+        Assert.Equal(ShareMode.Duplicate, AppSettings.Load(path).ShareMode);
+    }
+
+    [Fact]
+    public void OldSettingsFileKeepsDuplicate()
+    {
+        var path = Tmp();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{\"Quality\":\"P1080F60\",\"SendAudio\":false}");
+        var s = AppSettings.Load(path);
+        Assert.Equal(ShareMode.Duplicate, s.ShareMode);
+        Assert.Equal(QualityPreset.P1080F60, s.Quality);
     }
 
     [Fact]

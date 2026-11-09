@@ -10,7 +10,7 @@ using Windows.Graphics.DirectX;
 namespace KairoCast.App.Capture;
 
 /// <summary>
-/// Capture de l'écran principal par Windows.Graphics.Capture, en textures D3D11 BGRA.
+/// Capture d'un écran (le principal par défaut) par Windows.Graphics.Capture, en textures D3D11 BGRA.
 /// Le gestionnaire <see cref="FrameArrived"/> est appelé sur le fil du pool d'images : il doit rendre la main vite.
 /// </summary>
 internal sealed class ScreenCapture : IDisposable
@@ -41,19 +41,32 @@ internal sealed class ScreenCapture : IDisposable
     public int Height => _item.Size.Height;
     public long Frames => Interlocked.Read(ref _frames);
 
-    public ScreenCapture(GpuDevice gpu, MediaClock clock)
+    /// <param name="deviceName">Écran à capturer (« \\.\DISPLAY2 ») ; null = écran principal.</param>
+    /// <param name="required">Vrai : pas de repli sur l'écran principal si l'écran demandé est introuvable (écran virtuel).</param>
+    public ScreenCapture(GpuDevice gpu, MediaClock clock, string? deviceName = null, bool required = false)
     {
         _gpu = gpu;
         _clock = clock;
         if (!GraphicsCaptureSession.IsSupported())
             throw new PlatformNotSupportedException("Windows.Graphics.Capture n'est pas pris en charge sur ce PC");
 
-        var hmon = NativeInterop.PrimaryMonitor();
+        var hmon = IntPtr.Zero;
+        if (deviceName != null)
+        {
+            hmon = Display.DisplayNative.MonitorFor(deviceName);
+            if (hmon == IntPtr.Zero)
+            {
+                if (required) throw new InvalidOperationException($"écran {deviceName} introuvable");
+                Log.Warn($"Capture : écran {deviceName} introuvable, écran principal à la place");
+            }
+        }
+        var primary = hmon == IntPtr.Zero;
+        if (primary) hmon = NativeInterop.PrimaryMonitor();
         if (hmon == IntPtr.Zero) throw new InvalidOperationException("écran principal introuvable");
         _item = NativeInterop.CreateItemForMonitor(hmon);
         _item.Closed += (_, _) => { Log.Warn("Capture : l'écran capturé a été fermé"); Closed?.Invoke(); };
         _poolSize = _item.Size;
-        Log.Info($"Capture : écran principal « {_item.DisplayName} » {_poolSize.Width}x{_poolSize.Height}");
+        Log.Info($"Capture : écran {(primary ? "principal" : deviceName)} « {_item.DisplayName} » {_poolSize.Width}x{_poolSize.Height}");
 
         _pool = Direct3D11CaptureFramePool.CreateFreeThreaded(gpu.WinRtDevice, PixelFormat, Buffers, _poolSize);
         _pool.FrameArrived += OnFrameArrived;

@@ -27,6 +27,13 @@ public sealed class TrayApp : ApplicationContext
         using (var anchor = new Control()) _ = anchor.Handle;
         var ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         _controller = new AppController(ui, _settings);
+        _controller.ConfirmVirtualDisplayInstall = () => MessageBox.Show(
+            "Le mode Étendre ajoute un écran virtuel que la TV affiche, comme un deuxième écran.\n\n" +
+            "Il faut pour cela installer une seule fois le pilote open source « Virtual Display Driver » " +
+            "(VirtualDrivers, licence MIT, signé) : téléchargement par winget, puis Windows demande l'autorisation d'installer.\n\n" +
+            "Ensuite, l'écran virtuel n'apparaît que pendant les partages en mode Étendre.\n\nInstaller le pilote maintenant ?",
+            "Kairo Cast – mode Étendre", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+
         _main = new MainForm(_controller, _icon);
         _ = _main.Handle;
         _panel = new CastPanel(_controller);

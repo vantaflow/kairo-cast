@@ -21,6 +21,7 @@ public sealed class StreamSession : IAsyncDisposable
 
     private readonly StreamOptions _opt;
     private readonly BoxInfo _box;
+    private readonly CaptureTarget _target;
     private readonly MediaClock _clock = new();
     private readonly FrameSlots _slots = new(SlotCount);
     private readonly FramePacer _pacer;
@@ -55,30 +56,32 @@ public sealed class StreamSession : IAsyncDisposable
         get { lock (_statusLock) return _status; }
     }
 
-    private StreamSession(BoxInfo box, StreamOptions opt)
+    private StreamSession(BoxInfo box, StreamOptions opt, CaptureTarget target)
     {
         _box = box;
         _opt = opt;
+        _target = target;
         _pacer = new FramePacer(opt.Fps);
     }
 
+    /// <param name="target">Écran capturé ; null = écran principal (Dupliquer, comportement historique).</param>
     public static Task<StreamSession> StartAsync(BoxInfo box, StreamOptions opt, CancellationToken ct,
-        Action<Exception?>? onEnded = null, Action<string>? onStatus = null)
+        Action<Exception?>? onEnded = null, Action<string>? onStatus = null, CaptureTarget? target = null)
     {
         ArgumentNullException.ThrowIfNull(box);
         ArgumentNullException.ThrowIfNull(opt);
         // Initialisation COM/Media Foundation sur un fil MTA du pool, jamais sur le fil de l'interface.
-        return Task.Run(() => StartCoreAsync(box, opt.Validated(), ct, onEnded, onStatus), ct);
+        return Task.Run(() => StartCoreAsync(box, opt.Validated(), ct, onEnded, onStatus, target ?? CaptureTarget.Primary), ct);
     }
 
     private static async Task<StreamSession> StartCoreAsync(BoxInfo box, StreamOptions opt, CancellationToken ct,
-        Action<Exception?>? onEnded, Action<string>? onStatus)
+        Action<Exception?>? onEnded, Action<string>? onStatus, CaptureTarget target)
     {
-        var s = new StreamSession(box, opt);
+        var s = new StreamSession(box, opt, target);
         // Abonnement avant l'initialisation : aucun événement ne peut être manqué.
         if (onEnded != null) s.Ended += onEnded;
         if (onStatus != null) s.StatusChanged += onStatus;
-        Log.Info($"=== Session vers « {box.Name} » {box.Address}:{box.Port} : {opt.Width}x{opt.Height}@{opt.Fps}, {opt.BitrateKbps} kb/s, son={opt.Audio} ; " +
+        Log.Info($"=== Session vers « {box.Name} » {box.Address}:{box.Port} : {opt.Width}x{opt.Height}@{opt.Fps}, {opt.BitrateKbps} kb/s, son={opt.Audio}, écran {target} ; " +
                  $"Windows {Environment.OSVersion.Version}, {Environment.ProcessorCount} cœurs, .NET {Environment.Version}, PC « {Environment.MachineName} »");
         try
         {
@@ -105,7 +108,7 @@ public sealed class StreamSession : IAsyncDisposable
         _encoder.Failed += e => _ = StopAsync(e, raiseEnded: true, status: "Erreur de l'encodeur vidéo : partage arrêté");
         ct.ThrowIfCancellationRequested();
 
-        _capture = new ScreenCapture(_gpu, _clock);
+        _capture = new ScreenCapture(_gpu, _clock, _target.DeviceName, _target.Virtual);
         _capture.FrameArrived += OnFrame;
         _capture.Closed += () => _ = StopAsync(null, raiseEnded: true, status: "L'écran capturé a disparu : partage arrêté");
 
@@ -149,7 +152,8 @@ public sealed class StreamSession : IAsyncDisposable
         _statsTimer = new System.Threading.Timer(_ => LogStats(), null, 5000, 5000);
         var enc = UsingHardwareEncoder ? $"encodage matériel ({EncoderName})" : $"encodage logiciel ({EncoderName}), plus lent";
         var snd = !_opt.Audio ? "sans son" : AudioActive ? "avec son" : "son indisponible";
-        SetStatus($"Partage en cours vers {_box.Name} : {_opt.Width}x{_opt.Height} {_opt.Fps} i/s, {enc}, {snd}");
+        var what = _target.Virtual ? "écran étendu" : "écran dupliqué";
+        SetStatus($"Partage en cours vers {_box.Name} ({what}) : {_opt.Width}x{_opt.Height} {_opt.Fps} i/s, {enc}, {snd}");
     }
 
     // Fil du pool de capture : rendre la main vite.

@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using KairoCast.App.Capture;
 using KairoCast.App.Diagnostics;
+using KairoCast.App.Display;
 using KairoCast.App.Streaming;
 using KairoCast.Link;
 using KairoCast.Media;
@@ -15,6 +17,11 @@ internal static class Program
         "KairoCast.exe --box <ip>[:port] [--seconds N] [--width W] [--height H] [--fps F] [--kbps K] [--no-audio]\n" +
         "  --box      adresse de la box Kairo (port 7300 par défaut)\n" +
         "  --seconds  durée du partage, 0 = jusqu'à Ctrl+C ou fin de session (défaut 0)\n" +
+        "  --extend   mode Étendre : écran virtuel (pilote Virtual Display Driver déjà installé)\n" +
+        "  --screen   mode Dupliquer : écran à recopier, par exemple \\\\.\\DISPLAY2 (défaut : principal)\n" +
+        "KairoCast.exe --displays  liste les écrans et l'état du pilote d'écran virtuel\n" +
+        "KairoCast.exe --install-virtual-display  installe le pilote d'écran virtuel (winget + une demande UAC)\n" +
+
         "  défauts : 1920x1080, 30 i/s, 8000 kb/s, son activé\n" +
         "Journal : %LOCALAPPDATA%\\KairoCast\\log.txt";
 
@@ -34,6 +41,27 @@ internal static class Program
         TaskScheduler.UnobservedTaskException += (_, e) => { Log.Warn($"Tâche non observée : {Log.Describe(e.Exception)}"); e.SetObserved(); };
         Log.Info($"Kairo Cast {typeof(Program).Assembly.GetName().Version} démarré : {Environment.ProcessPath} {string.Join(' ', args)}");
 
+        // Partie élevée de l'installation du pilote d'écran virtuel (lancée par l'appli elle-même, via UAC).
+        if (args.Length == 2 && args[0] == "--vdd-install")
+            return VirtualDisplay.InstallElevated(args[1]);
+        if (args.Length == 1 && args[0] == "--install-virtual-display")
+        {
+            var err = VirtualDisplay.Detect().State == VddState.NotInstalled ? VirtualDisplay.Install(s => Show(console, s)) : null;
+            Show(console, err ?? "Pilote d'écran virtuel installé.");
+            return err == null ? 0 : 1;
+        }
+        if (args.Length == 1 && args[0] == "--displays")
+        {
+            var (state, problem) = VirtualDisplay.Detect();
+            var lines = DisplayNative.List().Select(d =>
+                $"{d.DeviceName} « {d.AdapterName} » {d.AdapterId} {d.MonitorId} allumé={d.Attached} principal={d.Primary} " +
+                $"{d.X},{d.Y} {d.Width}x{d.Height} virtuel={DisplayLogic.IsVirtual(d)}");
+            var text = $"Pilote d'écran virtuel : {state}{(problem != 0 ? $" (code {problem})" : "")}\n" + string.Join("\n", lines)
+                       + "\nChemins d'affichage :\n" + DisplayConfig.DescribeAll();
+            Log.Info(text);
+            Show(console, text);
+            return 0;
+        }
         if (args.Contains("--help") || args.Contains("-h"))
         {
             Show(console, Usage);
@@ -105,7 +133,19 @@ internal static class Program
 
         var address = await ResolveAsync(cli.Host);
         var box = new BoxInfo(cli.Host, address, cli.Port);
-        var session = await StreamSession.StartAsync(box, cli.Options, cts.Token);
+        CaptureTarget? target = cli.Screen == null ? null : new CaptureTarget(cli.Screen, false);
+        StreamSession session;
+        try
+        {
+            if (cli.Extend) target = new CaptureTarget(VirtualDisplay.Activate(cli.Options.Width, cli.Options.Height), true);
+
+            session = await StreamSession.StartAsync(box, cli.Options, cts.Token, target: target);
+        }
+        catch
+        {
+            if (cli.Extend) VirtualDisplay.Deactivate();
+            throw;
+        }
         var ended = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
         session.Ended += e => ended.TrySetResult(e);
         Log.Info($"Encodeur : {(session.UsingHardwareEncoder ? "matériel" : "LOGICIEL")} « {session.EncoderName} », son {(session.AudioActive ? "actif" : "inactif")}");
@@ -118,6 +158,7 @@ internal static class Program
         finally
         {
             await session.DisposeAsync();
+            if (cli.Extend) VirtualDisplay.Deactivate();
         }
         var cause = ended.Task.IsCompletedSuccessfully ? ended.Task.Result : null;
         Log.Info($"Fin : {session.Status}");
@@ -134,7 +175,7 @@ internal static class Program
     }
 }
 
-internal sealed record CliOptions(string Host, int Port, int Seconds, StreamOptions Options)
+internal sealed record CliOptions(string Host, int Port, int Seconds, StreamOptions Options, bool Extend = false, string? Screen = null)
 {
     public const int DefaultPort = 7300;
 
@@ -145,6 +186,8 @@ internal sealed record CliOptions(string Host, int Port, int Seconds, StreamOpti
         string? host = null;
         var port = DefaultPort;
         var seconds = 0;
+        var extend = false;
+        string? screen = null;
         var opt = new StreamOptions();
         for (var i = 0; i < args.Length; i++)
         {
@@ -176,6 +219,8 @@ internal sealed record CliOptions(string Host, int Port, int Seconds, StreamOpti
                     case "--fps": opt = opt with { Fps = NextInt() }; break;
                     case "--kbps": opt = opt with { BitrateKbps = NextInt() }; break;
                     case "--no-audio": opt = opt with { Audio = false }; break;
+                    case "--extend": extend = true; break;
+                    case "--screen": screen = Next(); break;
                     default: error = $"option inconnue : {a}"; return false;
                 }
             }
@@ -187,7 +232,9 @@ internal sealed record CliOptions(string Host, int Port, int Seconds, StreamOpti
         }
         if (string.IsNullOrWhiteSpace(host)) { error = "--box est obligatoire"; return false; }
         if (port is <= 0 or > 65535) { error = $"port invalide : {port}"; return false; }
-        result = new CliOptions(host, port, seconds, opt);
+        if (extend && screen != null) { error = "--extend et --screen sont incompatibles"; return false; }
+        result = new CliOptions(host, port, seconds, opt, extend, screen);
+
         return true;
     }
 }

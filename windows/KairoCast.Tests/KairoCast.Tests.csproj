@@ -29,6 +29,7 @@
     <Compile Include="..\KairoCast.App\Shell\Settings.cs" Link="AppShell\Settings.cs" />
     <Compile Include="..\KairoCast.App\Shell\HotkeyFilter.cs" Link="AppShell\HotkeyFilter.cs" />
     <Compile Include="..\KairoCast.App\Shell\EarlyEndGate.cs" Link="AppShell\EarlyEndGate.cs" />
+    <Compile Include="..\KairoCast.App\Display\DisplayLogic.cs" Link="AppShell\DisplayLogic.cs" />
     <Compile Include="..\KairoCast.App\Shell\ManualAddress.cs" Link="AppShell\ManualAddress.cs" />
   </ItemGroup>
 
