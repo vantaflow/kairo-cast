@@ -18,8 +18,8 @@ import java.net.SocketTimeoutException
 class LinkServer(
     private val listener: ReceiverListener,
     private val onPcmFormat: (rate: Int, channels: Int) -> Unit,
-    /** Vrai si une recopie (AirPlay ou Link) est déjà en cours. */
-    private val busy: () -> Boolean,
+    /** Réserve l'écran pour cette session ; faux si une recopie (AirPlay ou Link) est en cours. */
+    private val claim: () -> Boolean,
     /** (largeur max, hauteur max, son activé), lu à chaque connexion. */
     private val limits: () -> Triple<Int, Int, Boolean>,
     private val port: Int = LinkProtocol.PORT,
@@ -27,6 +27,7 @@ class LinkServer(
 ) {
     @Volatile private var server: ServerSocket? = null
     @Volatile private var current: Socket? = null
+    @Volatile private var sessionThread: Thread? = null
     private var thread: Thread? = null
 
     /** Port réellement écouté (utile si [port] vaut 0), -1 si arrêté. */
@@ -57,22 +58,29 @@ class LinkServer(
         try { current?.close() } catch (_: IOException) {}
         thread?.join(2_000)
         thread = null
+        // La session se termine (rappel de fermeture compris) avant qu'un redémarrage n'en accepte une autre.
+        sessionThread?.join(2_000)
+        sessionThread = null
     }
 
     private fun acceptLoop(s: ServerSocket) {
         while (!s.isClosed) {
             val c = try { s.accept() } catch (e: IOException) { break }
-            if (current != null || busy()) {
+            if (current != null) {
                 Thread({ refuse(c) }, "kairo-link-refus").start()
                 continue
             }
             current = c
-            Thread({
-                try { session(c) } finally {
+            sessionThread = Thread({
+                try {
+                    session(c)
+                } catch (e: Exception) {
+                    log("session : erreur $e")
+                } finally {
                     current = null
                     try { c.close() } catch (_: IOException) {}
                 }
-            }, "kairo-link-session").start()
+            }, "kairo-link-session").also { it.start() }
         }
     }
 
@@ -99,12 +107,16 @@ class LinkServer(
             LinkProtocol.writeRefuse(out, LinkProtocol.REFUSE_VERSION)
             return
         }
-        val (w, h, audio) = limits()
-        LinkProtocol.writeAccept(out, w, h, audio)
-        log("session ouverte : ${hello.senderName} (${c.inetAddress.hostAddress})")
+        if (!claim()) {
+            LinkProtocol.writeRefuse(out, LinkProtocol.REFUSE_BUSY)
+            return
+        }
         listener.onConnectionOpened()
         var buf = ByteArray(512 * 1024)
         try {
+            val (w, h, audio) = limits()
+            LinkProtocol.writeAccept(out, w, h, audio)
+            log("session ouverte : ${hello.senderName} (${c.inetAddress.hostAddress})")
             while (true) {
                 val p = LinkProtocol.readPacket(input, buf) ?: break
                 if (p.data.size > buf.size) buf = p.data

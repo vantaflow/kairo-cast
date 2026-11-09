@@ -63,7 +63,7 @@ dotnet publish KairoCast/KairoCast.csproj -c Release -o out
 
 ### Protocole Kairo Link
 
-Le PC envoie à la box (port TCP 7100, annoncé en mDNS `_kairocast._tcp`) un flux H.264 et du son PCM 16 bits ; description complète dans `docs/superpowers/specs/2026-11-09-emetteur-windows-design.md`.
+Le PC envoie à la box (port TCP 7200, annoncé en mDNS `_kairocast._tcp`) un flux H.264 et du son PCM 16 bits ; description complète dans `docs/superpowers/specs/2026-11-09-emetteur-windows-design.md`.
 
 ## Licence et crédits
 

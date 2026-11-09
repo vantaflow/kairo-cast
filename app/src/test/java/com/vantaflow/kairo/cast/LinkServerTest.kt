@@ -26,7 +26,7 @@ class LinkServerTest {
         override fun onVideoReset() {}
     }
 
-    private val server = LinkServer(listener, { r, c -> events += "pcm $r/$c" }, { busy }, { Triple(1920, 1080, true) }, port = 0, readTimeoutMs = 1_000)
+    private val server = LinkServer(listener, { r, c -> events += "pcm $r/$c" }, { !busy }, { Triple(1920, 1080, true) }, port = 0, readTimeoutMs = 1_000)
 
     @After fun tearDown() = server.stop()
 

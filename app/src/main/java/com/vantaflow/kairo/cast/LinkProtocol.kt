@@ -10,7 +10,8 @@ import java.io.IOException
  * docs/superpowers/specs/2026-11-09-emetteur-windows-design.md. Entiers gros-boutistes.
  */
 object LinkProtocol {
-    const val PORT = 7100
+    /** 7100 est pris par le flux de recopie AirPlay (serveur natif). */
+    const val PORT = 7200
     const val SERVICE_TYPE = "_kairocast._tcp"
     const val VERSION = 1
 

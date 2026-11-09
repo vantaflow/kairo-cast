@@ -6,7 +6,7 @@ namespace KairoCast.Core;
 /// <summary>Protocole Kairo Link v1 (voir docs/superpowers/specs/2026-11-09-emetteur-windows-design.md).</summary>
 public static class LinkProtocol
 {
-    public const int Port = 7100;
+    public const int Port = 7200;
     public const string ServiceType = "_kairocast._tcp.local";
     public const byte Version = 1;
 

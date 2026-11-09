@@ -126,8 +126,8 @@ sealed class MainForm : Form
         var target = Target();
         if (target == null) { SetStatus("Choisissez une box ou saisissez une adresse IP valide."); return; }
         var s = new Sender();
-        s.Status += m => BeginInvoke(() => SetStatus(m));
-        s.Ended += err => BeginInvoke(() =>
+        s.Status += m => Ui(() => { if (sender == s) SetStatus(m); });
+        s.Ended += err => Ui(() =>
         {
             if (sender != s) return; // échec au démarrage : déjà traité
             sender = null;
@@ -135,22 +135,33 @@ sealed class MainForm : Form
             SetStatus(err ?? "Recopie arrêtée.");
         });
         sender = s;
-        Running(true);
-        go.Enabled = false;
+        Running(true); // « Arrêter » reste cliquable pendant le démarrage
         try
         {
             int idx = Math.Max(0, screens.SelectedIndex);
             await s.StartAsync(target, idx, Screen.AllScreens[idx].Bounds, sound.Checked, fluidity.SelectedIndex == 0 ? 60 : 30);
             Prefs.LastAddress = target.Address.ToString();
         }
+        catch (OperationCanceledException)
+        {
+            // Arrêt demandé (ou box fermée) pendant le démarrage : Ended a déjà mis l'interface à jour.
+        }
         catch (Exception e)
         {
-            sender = null;
+            if (sender == s)
+            {
+                sender = null;
+                Running(false);
+                SetStatus(e.Message);
+            }
             s.Dispose();
-            Running(false);
-            SetStatus(e.Message);
         }
-        finally { go.Enabled = true; }
+    }
+
+    void Ui(Action a)
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        try { BeginInvoke(a); } catch (InvalidOperationException) { } // fenêtre en cours de fermeture
     }
 
     void Running(bool on)

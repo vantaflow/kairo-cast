@@ -33,31 +33,42 @@ class ReceiverService : Service() {
         },
     )
 
-    /** Source de la recopie en cours : AirPlay et Kairo Link s'excluent. */
-    @Volatile private var source = NONE
+    /** Qui a l'écran : AirPlay et Kairo Link s'excluent. */
+    private val arbiter = SourceArbiter()
     private var link: LinkServer? = null // worker uniquement
 
-    /**
-     * Relais vers le pipeline. AirPlay n'est ignoré que pendant une session Kairo Link (ses
-     * rappels peuvent précéder l'ouverture) ; Kairo Link n'est relayé que pendant sa propre session.
-     */
-    private fun relay(src: Int) = object : ReceiverListener {
-        private fun mine(): Boolean = accepting && (if (src == LINK) source == LINK else source != LINK)
+    private fun startMirror() {
+        MirrorBus.start(CastSettings(PrefsStore(this)).audioEnabled)
+        session.opened()
+    }
+
+    private fun stopMirror() {
+        session.closed()
+        MirrorBus.stop()
+    }
+
+    /** Relais vers le pipeline, filtré par [arbiter]. */
+    private fun relay(src: SourceArbiter.Source) = object : ReceiverListener {
+        private fun mine(): Boolean = accepting && arbiter.accepts(src)
 
         override fun onConnectionOpened() {
             if (!accepting) return
-            synchronized(this@ReceiverService) {
-                if (source != NONE && source != src) return
-                source = src
-            }
-            MirrorBus.start(CastSettings(PrefsStore(this@ReceiverService)).audioEnabled)
-            session.opened()
+            // Kairo Link a déjà réservé l'écran (tryClaimLink) avant d'accepter le PC.
+            if (src == SourceArbiter.Source.LINK || arbiter.airplayOpened()) startMirror()
         }
         override fun onConnectionClosed() {
-            if (!mine()) return
-            session.closed()
-            MirrorBus.stop()
-            source = NONE
+            if (!accepting) return
+            if (src == SourceArbiter.Source.LINK) {
+                stopMirror()
+                if (arbiter.linkClosed()) {
+                    Log.i(TAG, "fin de la session Kairo Link : le Mac connecté reprend la main")
+                    startMirror()
+                    return
+                }
+            } else {
+                if (!arbiter.airplayClosed()) return
+                stopMirror()
+            }
             ReceiverState.set(Status.Waiting)
         }
         override fun onVideoFormat(width: Int, height: Int, contentX: Int, contentY: Int, contentW: Int, contentH: Int) {
@@ -84,7 +95,7 @@ class ReceiverService : Service() {
         }
     }
 
-    private val listener = relay(AIRPLAY)
+    private val listener = relay(SourceArbiter.Source.AIRPLAY)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -140,9 +151,11 @@ class ReceiverService : Service() {
         }
         running = true
         val ls = LinkServer(
-            relay(LINK),
-            onPcmFormat = { rate, ch -> MirrorBus.pipeline?.onPcmFormat(rate, ch) },
-            busy = { session.active },
+            relay(SourceArbiter.Source.LINK),
+            onPcmFormat = { rate, ch ->
+                if (accepting && arbiter.accepts(SourceArbiter.Source.LINK)) MirrorBus.pipeline?.onPcmFormat(rate, ch)
+            },
+            claim = { accepting && arbiter.tryClaimLink() },
             limits = {
                 val q = CastSettings(PrefsStore(this)).quality
                 Triple(q.width, q.height, CastSettings(PrefsStore(this)).audioEnabled)
@@ -176,7 +189,7 @@ class ReceiverService : Service() {
         running = false
         session.closed()
         MirrorBus.stop()
-        source = NONE
+        arbiter.reset()
         ReceiverState.set(Status.Stopped)
     }
 
@@ -194,8 +207,5 @@ class ReceiverService : Service() {
         private const val CHANNEL = "receiver"
         private const val NOTIF_ID = 1
         private const val TAG = "KairoCast"
-        private const val NONE = 0
-        private const val AIRPLAY = 1
-        private const val LINK = 2
     }
 }

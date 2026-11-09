@@ -26,7 +26,7 @@ plus d'AirPlay. Rien ne change pour le Mac.
 
 ## Protocole Kairo Link v1
 
-- Découverte : mDNS `_kairocast._tcp`, nom = nom du récepteur, port **7100**, TXT `v=1`.
+- Découverte : mDNS `_kairocast._tcp`, nom = nom du récepteur, port **7200** (7100 est pris par AirPlay), TXT `v=1`.
 - TCP, entiers gros-boutistes.
 - Poignée de main : l'émetteur envoie `"KCST"`, `u8 version=1`, `u16 len` + nom UTF-8 du PC.
   Le récepteur répond `"KCOK"`, `u16 largeurMax`, `u16 hauteurMax` (réglage Netteté), `u8 son`

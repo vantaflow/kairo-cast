@@ -158,6 +158,16 @@ public class MdnsTests
     }
 
     [Fact]
+    public void KeepsDotsInBoxName()
+    {
+        var b = new DnsBuilder();
+        b.Header(answers: 1, additional: 0);
+        int svc = b.Name("_kairocast._tcp.local");
+        b.Rr(12, () => b.NameRef("TV Salon v2.0", svc));
+        Assert.Equal("TV Salon v2.0", Assert.Single(Mdns.Parse(b.ToArray(), IPAddress.Loopback)).Name);
+    }
+
+    [Fact]
     public void IgnoresGarbage() => Assert.Empty(Mdns.Parse(new byte[] { 1, 2, 3 }, IPAddress.Loopback));
 
     /// <summary>Petit constructeur de réponses DNS pour les tests.</summary>

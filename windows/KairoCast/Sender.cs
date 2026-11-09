@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using KairoCast.Core;
-using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 namespace KairoCast;
@@ -20,40 +19,48 @@ public sealed class Sender : IDisposable
     int stopped;
 
     public event Action<string>? Status;
-    /// <summary>Fin de session ; message d'erreur ou null si arrêt normal.</summary>
+    /// <summary>Fin de session ; message d'erreur ou null si arrêt normal. Jamais sur le thread de l'interface.</summary>
     public event Action<string?>? Ended;
 
     public string? Encoder { get; private set; }
 
     long Pts => clock.ElapsedTicks * 1_000_000 / Stopwatch.Frequency;
 
+    void ThrowIfStopped()
+    {
+        if (Volatile.Read(ref stopped) == 1) throw new OperationCanceledException();
+    }
+
     public async Task StartAsync(Receiver receiver, int output, Rectangle screen, bool withAudio, int fps)
     {
         Status?.Invoke($"Connexion à {receiver.Name}…");
         tcp = new TcpClient { NoDelay = true, SendBufferSize = 1 << 20 };
-        using (var t = new CancellationTokenSource(TimeSpan.FromSeconds(4)))
+        using (var t = CancellationTokenSource.CreateLinkedTokenSource(stop.Token))
         {
+            t.CancelAfter(TimeSpan.FromSeconds(4));
             try { await tcp.ConnectAsync(receiver.Address, receiver.Port, t.Token); }
-            catch (OperationCanceledException) { throw new IOException($"{receiver.Name} ne répond pas."); }
+            catch (OperationCanceledException) { ThrowIfStopped(); throw new IOException($"{receiver.Name} ne répond pas."); }
         }
         var s = tcp.GetStream();
         s.ReadTimeout = 4000;
-        await s.WriteAsync(LinkProtocol.Hello(Environment.MachineName));
+        s.WriteTimeout = 5000; // un réseau bloqué ne fige jamais l'envoi plus de 5 s
+        await s.WriteAsync(LinkProtocol.Hello(Environment.MachineName), stop.Token);
         var reply = LinkProtocol.ReadReply(s);
         if (!reply.Accepted)
             throw new IOException(reply.RefuseReason == LinkProtocol.RefuseBusy
                 ? $"{receiver.Name} reçoit déjà une recopie."
                 : "Version de Kairo Cast incompatible : mettez à jour l'application sur la box.");
         s.ReadTimeout = Timeout.Infinite;
-        net = new BufferedStream(s, 1 << 16);
+        lock (writeLock) net = new BufferedStream(s, 1 << 16);
+        // Ping dès la poignée de main : la box coupe après 5 s de silence, la recherche d'encodeur peut durer.
+        _ = Task.Run(PingLoop);
+        _ = Task.Run(WatchReceiver);
 
         var (w, h) = Ffmpeg.Fit(screen.Width, screen.Height, reply.MaxWidth, reply.MaxHeight);
         Send(LinkProtocol.VideoFormatType, 0, LinkProtocol.VideoFormat(w, h));
         await StartVideoAsync(output, w, h, fps);
+        ThrowIfStopped();
         if (withAudio && reply.Audio) StartAudio();
-
-        _ = Task.Run(PingLoop);
-        _ = Task.Run(WatchReceiver);
         Status?.Invoke($"Recopie vers {receiver.Name} — {w}×{h}, {fps} i/s ({Encoder})");
     }
 
@@ -63,6 +70,7 @@ public sealed class Sender : IDisposable
         string? lastError = null;
         foreach (var enc in Ffmpeg.Encoders)
         {
+            ThrowIfStopped();
             var p = new Process
             {
                 StartInfo = new ProcessStartInfo(exe, Ffmpeg.Arguments(enc, output, w, h, fps, Ffmpeg.Bitrate(w, h, fps)))
@@ -76,22 +84,24 @@ public sealed class Sender : IDisposable
             var err = new System.Text.StringBuilder();
             p.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (err) err.AppendLine(e.Data); };
             p.Start();
+            ChildProcesses.Attach(p); // tué avec Kairo Cast, même en cas de plantage
+            lock (writeLock) ffmpeg = p; // visible par End pendant l'essai
             p.BeginErrorReadLine();
             var stdout = p.StandardOutput.BaseStream;
             var first = new byte[64 * 1024];
             var read = stdout.ReadAsync(first, 0, first.Length);
-            var done = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(6)));
-            if (done == read && read.Result > 0)
+            var done = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(6), stop.Token).ContinueWith(_ => { }));
+            if (done == read && read.Status == TaskStatus.RanToCompletion && read.Result > 0 && Volatile.Read(ref stopped) == 0)
             {
                 Encoder = enc;
-                ffmpeg = p;
                 _ = Task.Run(() => PumpVideo(stdout, first, read.Result));
                 return;
             }
             lock (err) lastError = err.ToString().Trim();
-            try { if (!p.HasExited) p.Kill(); } catch { }
-            p.Dispose();
+            lock (writeLock) ffmpeg = null;
+            Kill(p);
         }
+        ThrowIfStopped();
         throw new IOException("Aucun encodeur vidéo n'a démarré." + (string.IsNullOrEmpty(lastError) ? "" : "\n" + lastError));
     }
 
@@ -117,20 +127,21 @@ public sealed class Sender : IDisposable
     {
         try
         {
-            loopback = new WasapiLoopbackCapture();
-            var f = loopback.WaveFormat;
+            var cap = new WasapiLoopbackCapture();
+            var f = cap.WaveFormat;
             bool isFloat = f.Encoding == WaveFormatEncoding.IeeeFloat
                 || (f is WaveFormatExtensible x && x.SubFormat == NAudio.Dmo.AudioMediaSubtypes.MEDIASUBTYPE_IEEE_FLOAT);
             if (!(isFloat && f.BitsPerSample == 32) && f.BitsPerSample != 16)
             {
                 Status?.Invoke("Son non pris en charge par ce PC : recopie sans son.");
-                loopback.Dispose(); loopback = null;
+                cap.Dispose();
                 return;
             }
-            loopback.DataAvailable += (_, e) =>
+            cap.DataAvailable += (_, e) =>
             {
-                if (e.BytesRecorded <= 0) return;
-                var pcm = Pcm.ToStereo(isFloat ? Pcm.FloatToS16(e.Buffer.AsSpan(0, e.BytesRecorded)) : e.Buffer.AsSpan(0, e.BytesRecorded).ToArray(), f.Channels);
+                if (e.BytesRecorded <= 0 || stop.IsCancellationRequested) return;
+                var raw = isFloat ? Pcm.FloatToS16(e.Buffer.AsSpan(0, e.BytesRecorded)) : e.Buffer.AsSpan(0, e.BytesRecorded).ToArray();
+                var pcm = Pcm.ToStereo(raw, f.Channels);
                 try
                 {
                     if (!audioFormatSent)
@@ -140,14 +151,19 @@ public sealed class Sender : IDisposable
                     }
                     Send(LinkProtocol.Audio, Pts, pcm);
                 }
-                catch (Exception ex) { End(Message(ex)); }
+                // Jamais End sur le thread de capture : Dispose y attendrait sa propre fin.
+                catch (Exception ex) { var m = Message(ex); Task.Run(() => End(m)); }
             };
-            loopback.StartRecording();
+            lock (writeLock)
+            {
+                if (stop.IsCancellationRequested) { cap.Dispose(); return; }
+                loopback = cap;
+            }
+            cap.StartRecording();
         }
         catch (Exception e)
         {
             Status?.Invoke("Son indisponible : " + e.Message);
-            loopback?.Dispose(); loopback = null;
         }
     }
 
@@ -189,23 +205,40 @@ public sealed class Sender : IDisposable
         }
     }
 
-    static string Message(Exception e) => e is IOException or SocketException
+    static string Message(Exception e) => e is IOException or SocketException or ObjectDisposedException
         ? "Connexion avec la box perdue."
         : e.Message;
 
-    public void Stop() => End(null);
+    static void Kill(Process? p)
+    {
+        if (p == null) return;
+        try { if (!p.HasExited) p.Kill(); } catch { }
+        p.Dispose();
+    }
+
+    /// <summary>Arrêt sans bloquer l'appelant (thread de l'interface).</summary>
+    public void Stop() => Task.Run(() => End(null));
 
     void End(string? error)
     {
         if (Interlocked.Exchange(ref stopped, 1) == 1) return;
-        try { lock (writeLock) { if (net != null) { LinkProtocol.WritePacket(net, LinkProtocol.Bye, Pts, ReadOnlySpan<byte>.Empty); net.Flush(); } } } catch { }
+        // FIN en best-effort, sans attendre un envoi bloqué par le réseau.
+        if (Monitor.TryEnter(writeLock, 300))
+        {
+            try { if (net != null) { LinkProtocol.WritePacket(net, LinkProtocol.Bye, Pts, ReadOnlySpan<byte>.Empty); net.Flush(); } }
+            catch { }
+            finally { Monitor.Exit(writeLock); }
+        }
         stop.Cancel();
-        try { loopback?.StopRecording(); } catch { }
-        loopback?.Dispose();
-        try { if (ffmpeg is { HasExited: false }) ffmpeg.Kill(); } catch { }
-        ffmpeg?.Dispose();
-        try { tcp?.Close(); } catch { }
-        lock (writeLock) net = null;
+        try { tcp?.Close(); } catch { } // débloque un envoi en cours
+        Process? p; WasapiLoopbackCapture? cap;
+        lock (writeLock) { net = null; p = ffmpeg; ffmpeg = null; cap = loopback; loopback = null; }
+        Kill(p);
+        if (cap != null)
+        {
+            try { cap.StopRecording(); } catch { }
+            Task.Run(() => { try { cap.Dispose(); } catch { } });
+        }
         Ended?.Invoke(error);
     }
 

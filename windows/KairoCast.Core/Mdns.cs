@@ -23,7 +23,7 @@ public static class Mdns
             b.Add((byte)l.Length);
             b.AddRange(Encoding.ASCII.GetBytes(l));
         }
-        b.AddRange(new byte[] { 0, 0, 12, 0, 1 }); // PTR, IN
+        b.AddRange(new byte[] { 0, 0, 12, 0x80, 1 }); // PTR, IN, réponse unicast demandée (bit QU)
         return b.ToArray();
     }
 
@@ -67,7 +67,10 @@ public static class Mdns
             }
             foreach (var inst in instances)
             {
-                var label = inst.Split('.')[0];
+                // Le nom de la box peut contenir des points : on retire seulement le suffixe du service.
+                var label = inst.EndsWith('.' + LinkProtocol.ServiceType, StringComparison.OrdinalIgnoreCase)
+                    ? inst[..^(LinkProtocol.ServiceType.Length + 1)]
+                    : inst.Split('.')[0];
                 if (srv.TryGetValue(inst, out var s))
                     result.Add(new Receiver(label, hosts.TryGetValue(s.host, out var a) ? a : from, s.port));
                 else
@@ -103,28 +106,78 @@ public static class Mdns
         return string.Join('.', labels);
     }
 
-    /// <summary>Interroge le réseau pendant <paramref name="duration"/> et rend les récepteurs trouvés.</summary>
+    /// <summary>
+    /// Interroge le réseau pendant <paramref name="duration"/> et rend les récepteurs trouvés. La requête part
+    /// de chaque interface IPv4 active ; les réponses sont écoutées en unicast (port éphémère) et en
+    /// multicast (port 5353, partagé avec le service mDNS de Windows quand c'est possible).
+    /// </summary>
     public static async Task<List<Receiver>> DiscoverAsync(TimeSpan duration, CancellationToken ct = default)
     {
-        var found = new Dictionary<string, Receiver>();
-        using var udp = new UdpClient(AddressFamily.InterNetwork);
-        udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-        udp.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
+        var found = new System.Collections.Concurrent.ConcurrentDictionary<string, Receiver>();
         var q = BuildQuery(LinkProtocol.ServiceType);
-        var end = DateTime.UtcNow + duration;
-        int sent = 0;
-        while (DateTime.UtcNow < end && !ct.IsCancellationRequested)
+        var sockets = new List<UdpClient>();
+        try
         {
-            if (sent < 3) { await udp.SendAsync(q, Group, ct); sent++; }
-            using var t = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            t.CancelAfter(TimeSpan.FromMilliseconds(Math.Min(500, Math.Max(1, (end - DateTime.UtcNow).TotalMilliseconds))));
+            foreach (var local in LocalAddresses())
+            {
+                try
+                {
+                    var u = new UdpClient(AddressFamily.InterNetwork);
+                    u.Client.Bind(new IPEndPoint(local, 0));
+                    u.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, local.GetAddressBytes());
+                    sockets.Add(u);
+                }
+                catch (SocketException) { }
+            }
             try
             {
-                var r = await udp.ReceiveAsync(t.Token);
-                foreach (var rc in Parse(r.Buffer, r.RemoteEndPoint.Address)) found[rc.Address + ":" + rc.Port] = rc;
+                var m = new UdpClient(AddressFamily.InterNetwork);
+                m.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                m.Client.Bind(new IPEndPoint(IPAddress.Any, 5353));
+                foreach (var local in LocalAddresses())
+                    try { m.JoinMulticastGroup(Group.Address, local); } catch (SocketException) { }
+                sockets.Add(m);
             }
-            catch (OperationCanceledException) { }
+            catch (SocketException) { }
+
+            using var stopAt = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            stopAt.CancelAfter(duration);
+            var listeners = sockets.Select(u => Task.Run(async () =>
+            {
+                try
+                {
+                    while (!stopAt.IsCancellationRequested)
+                    {
+                        var r = await u.ReceiveAsync(stopAt.Token);
+                        foreach (var rc in Parse(r.Buffer, r.RemoteEndPoint.Address)) found[rc.Address + ":" + rc.Port] = rc;
+                    }
+                }
+                catch (OperationCanceledException) { }
+                catch (ObjectDisposedException) { }
+                catch (SocketException) { }
+            })).ToList();
+            for (int i = 0; i < 3 && !stopAt.IsCancellationRequested; i++)
+            {
+                foreach (var u in sockets.Take(sockets.Count))
+                    try { await u.SendAsync(q, Group, stopAt.Token); } catch (Exception e) when (e is SocketException or OperationCanceledException) { }
+                try { await Task.Delay(600, stopAt.Token); } catch (OperationCanceledException) { }
+            }
+            await Task.WhenAll(listeners);
+        }
+        finally
+        {
+            foreach (var u in sockets) u.Dispose();
         }
         return found.Values.OrderBy(r => r.Name).ToList();
     }
+
+    static IEnumerable<IPAddress> LocalAddresses() =>
+        System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up
+                && n.SupportsMulticast
+                && n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+            .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+            .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
+            .Select(a => a.Address)
+            .Distinct();
 }
