@@ -22,6 +22,7 @@ class MdnsAdvertiser(ctx: Context) {
         port: Int,
         airplayTxt: Map<String, String>,
         raopTxt: Map<String, String>,
+        linkPort: Int = 0,
     ) {
         unregister()
         val wifi = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -31,6 +32,7 @@ class MdnsAdvertiser(ctx: Context) {
         }
         add("_airplay._tcp", name, port, airplayTxt)
         add("_raop._tcp", raopName, port, raopTxt)
+        if (linkPort > 0) add(LinkProtocol.SERVICE_TYPE, name, linkPort, mapOf("v" to LinkProtocol.VERSION.toString()))
     }
 
     private fun add(type: String, name: String, port: Int, txt: Map<String, String>) {

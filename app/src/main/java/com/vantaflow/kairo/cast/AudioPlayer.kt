@@ -15,7 +15,11 @@ import java.util.concurrent.TimeUnit
  * AudioTrack. Une instance = un type de codec. [feed] ne bloque jamais (file bornée, la plus
  * ancienne trame est abandonnée si elle est pleine). Aucune exception ne remonte à l'appelant.
  */
-class AudioPlayer(private val codecType: Int) {
+class AudioPlayer(
+    private val codecType: Int,
+    private val pcmRate: Int = SAMPLE_RATE,
+    private val pcmChannels: Int = CHANNELS,
+) {
     private class Packet(val data: ByteArray, val ptsUs: Long)
 
     private val queue = ArrayBlockingQueue<Packet>(QUEUE_CAPACITY)
@@ -37,7 +41,7 @@ class AudioPlayer(private val codecType: Int) {
 
     fun feed(data: ByteArray, size: Int, ptsUs: Long) {
         if (!running || failed || size <= 0) return
-        if (size == 4 && data[0] == 0.toByte() && data[1] == 0x68.toByte() && data[2] == 0x34.toByte()) return // paquet vide
+        if (codecType != CT_PCM && size == 4 && data[0] == 0.toByte() && data[1] == 0x68.toByte() && data[2] == 0x34.toByte()) return // paquet vide
         val p = Packet(data.copyOf(size), ptsUs)
         while (!queue.offer(p)) {
             queue.poll() // latence bornée : on jette le plus ancien
@@ -87,6 +91,10 @@ class AudioPlayer(private val codecType: Int) {
     private fun run() {
         var codec: MediaCodec? = null
         try {
+            if (codecType == CT_PCM) {
+                runPcm()
+                return
+            }
             codec = createCodec()
             if (codec == null) {
                 Log.w(TAG, "audio : codec ct=$codecType non pris en charge, son désactivé")
@@ -112,6 +120,17 @@ class AudioPlayer(private val codecType: Int) {
             try { track?.stop() } catch (_: Exception) {}
             try { track?.release() } catch (_: Exception) {}
             track = null
+        }
+    }
+
+    /** PCM 16 bits petit-boutiste (Kairo Link) : pas de décodeur, écriture directe. */
+    private fun runPcm() {
+        val f = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_RAW, pcmRate, pcmChannels)
+        val t = createTrack(f)
+        while (running) {
+            val p = queue.poll(20, TimeUnit.MILLISECONDS) ?: continue
+            t.write(p.data, 0, p.data.size)
+            if (++played % 1000 == 0L) Log.i(TAG, "audio PCM : $played paquets joués")
         }
     }
 
@@ -192,11 +211,16 @@ class AudioPlayer(private val codecType: Int) {
         const val CT_ALAC = 2
         const val CT_AAC_LC = 4
         const val CT_AAC_ELD = 8
+        /** PCM 16 bits (Kairo Link), pas un codec AirPlay. */
+        const val CT_PCM = 100
         private const val TAG = "KairoCast"
         private const val SAMPLE_RATE = 44100
         private const val CHANNELS = 2
         private const val PROFILE_ELD = 39
         private const val QUEUE_CAPACITY = 40
+
+        /** Le lecteur sait-il jouer ce type de son ? */
+        fun supports(codecType: Int): Boolean = codecType == CT_AAC_ELD || codecType == CT_AAC_LC || codecType == CT_PCM
         private val ASC_ELD = byteArrayOf(0xF8.toByte(), 0xE8.toByte(), 0x50, 0x00)
         private val ASC_LC = byteArrayOf(0x12, 0x10)
 

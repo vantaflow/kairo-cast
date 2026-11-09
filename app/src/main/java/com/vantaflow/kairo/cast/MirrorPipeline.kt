@@ -21,6 +21,20 @@ class MirrorPipeline(private val audioEnabled: Boolean = true) : ReceiverListene
     private var audioCt = -1
     private var audioVolumeDb = 0f
     private var audioSkipLogged = false
+    private var pcmRate = 48_000
+    private var pcmChannels = 2
+
+    /** Format du son PCM (Kairo Link) ; s'applique au prochain lecteur créé. */
+    fun onPcmFormat(rate: Int, channels: Int) {
+        synchronized(lock) {
+            if (rate == pcmRate && channels == pcmChannels) return
+            pcmRate = rate
+            pcmChannels = channels
+            audio?.release()
+            audio = null
+            audioCt = -1
+        }
+    }
 
     private fun targetSurface(): Surface? = outputSurface ?: placeholder.surface
 
@@ -119,8 +133,8 @@ class MirrorPipeline(private val audioEnabled: Boolean = true) : ReceiverListene
                 Log.i(TAG, "audio : codec ct=$codecType")
                 audio?.release()
                 audio = null
-                if (codecType == AudioPlayer.CT_AAC_ELD || codecType == AudioPlayer.CT_AAC_LC) {
-                    audio = AudioPlayer(codecType).also {
+                if (AudioPlayer.supports(codecType)) {
+                    audio = AudioPlayer(codecType, pcmRate, pcmChannels).also {
                         it.setVolumeDb(audioVolumeDb)
                         it.start()
                     }

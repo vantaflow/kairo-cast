@@ -33,41 +33,58 @@ class ReceiverService : Service() {
         },
     )
 
-    private val listener = object : ReceiverListener {
+    /** Source de la recopie en cours : AirPlay et Kairo Link s'excluent. */
+    @Volatile private var source = NONE
+    private var link: LinkServer? = null // worker uniquement
+
+    /**
+     * Relais vers le pipeline. AirPlay n'est ignoré que pendant une session Kairo Link (ses
+     * rappels peuvent précéder l'ouverture) ; Kairo Link n'est relayé que pendant sa propre session.
+     */
+    private fun relay(src: Int) = object : ReceiverListener {
+        private fun mine(): Boolean = accepting && (if (src == LINK) source == LINK else source != LINK)
+
         override fun onConnectionOpened() {
             if (!accepting) return
+            synchronized(this@ReceiverService) {
+                if (source != NONE && source != src) return
+                source = src
+            }
             MirrorBus.start(CastSettings(PrefsStore(this@ReceiverService)).audioEnabled)
             session.opened()
         }
         override fun onConnectionClosed() {
-            if (!accepting) return
+            if (!mine()) return
             session.closed()
             MirrorBus.stop()
+            source = NONE
             ReceiverState.set(Status.Waiting)
         }
         override fun onVideoFormat(width: Int, height: Int, contentX: Int, contentY: Int, contentW: Int, contentH: Int) {
-            if (!accepting) return
+            if (!mine()) return
             Log.i(TAG, "onVideoFormat flux ${width}x$height contenu x=$contentX y=$contentY ${contentW}x$contentH")
             ReceiverState.set(Status.Mirroring(width, height))
             MirrorBus.pipeline?.onVideoFormat(width, height, contentX, contentY, contentW, contentH)
         }
         override fun onVideoData(data: ByteArray, size: Int, ptsUs: Long) {
-            if (!accepting) return
+            if (!mine()) return
             MirrorBus.pipeline?.onVideoData(data, size, ptsUs)
         }
         override fun onAudioData(data: ByteArray, size: Int, ptsUs: Long, codecType: Int) {
-            if (!accepting) return
+            if (!mine()) return
             MirrorBus.pipeline?.onAudioData(data, size, ptsUs, codecType)
         }
         override fun onAudioVolume(volumeDb: Float) {
-            if (!accepting) return
+            if (!mine()) return
             MirrorBus.pipeline?.onAudioVolume(volumeDb)
         }
         override fun onVideoReset() {
-            if (!accepting) return
+            if (!mine()) return
             MirrorBus.pipeline?.onVideoReset()
         }
     }
+
+    private val listener = relay(AIRPLAY)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -122,6 +139,17 @@ class ReceiverService : Service() {
             return
         }
         running = true
+        val ls = LinkServer(
+            relay(LINK),
+            onPcmFormat = { rate, ch -> MirrorBus.pipeline?.onPcmFormat(rate, ch) },
+            busy = { session.active },
+            limits = {
+                val q = CastSettings(PrefsStore(this)).quality
+                Triple(q.width, q.height, CastSettings(PrefsStore(this)).audioEnabled)
+            },
+        )
+        val linkOk = ls.start()
+        if (linkOk) link = ls else Log.w(TAG, "Kairo Link indisponible (port ${LinkProtocol.PORT})")
         val adv = MdnsAdvertiser(this)
         adv.register(
             name,
@@ -129,6 +157,7 @@ class ReceiverService : Service() {
             NativeReceiver.AIRPLAY_PORT,
             TxtRecord.parse(NativeReceiver.airplayTxt()),
             TxtRecord.parse(NativeReceiver.raopTxt()),
+            linkPort = if (linkOk) LinkProtocol.PORT else 0,
         )
         advertiser = adv
         ReceiverState.set(Status.Waiting)
@@ -141,10 +170,13 @@ class ReceiverService : Service() {
         accepting = false
         advertiser?.unregister()
         advertiser = null
+        link?.stop()
+        link = null
         NativeReceiver.stop()
         running = false
         session.closed()
         MirrorBus.stop()
+        source = NONE
         ReceiverState.set(Status.Stopped)
     }
 
@@ -162,5 +194,8 @@ class ReceiverService : Service() {
         private const val CHANNEL = "receiver"
         private const val NOTIF_ID = 1
         private const val TAG = "KairoCast"
+        private const val NONE = 0
+        private const val AIRPLAY = 1
+        private const val LINK = 2
     }
 }
