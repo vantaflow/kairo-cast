@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="KairoCast.Core.Tests/KairoCast.Core.Tests.csproj" />
+  <Project Path="KairoCast.Core/KairoCast.Core.csproj" />
+  <Project Path="KairoCast/KairoCast.csproj" />
+</Solution>

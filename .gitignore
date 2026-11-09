@@ -12,3 +12,9 @@ local.properties
 keystore.properties
 *.jks
 *.keystore
+
+# Émetteur Windows
+windows/**/bin/
+windows/**/obj/
+windows/out/
+windows/vendor/

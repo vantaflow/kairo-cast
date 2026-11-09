@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>kairocast.ico</ApplicationIcon>
+    <AssemblyName>KairoCast</AssemblyName>
+    <Version>1.1.0</Version>
+    <Product>Kairo Cast</Product>
+    <Description>Recopie de l'écran d'un PC Windows vers Kairo Cast (Android TV)</Description>
+    <Company>vantaflow</Company>
+    <!-- Un seul fichier autonome, sans .NET à installer. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KairoCast.Core\KairoCast.Core.csproj" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+  </ItemGroup>
+
+  <!-- ffmpeg LGPL (scripts/fetch-ffmpeg.ps1) embarqué s'il est présent. -->
+  <ItemGroup Condition="Exists('..\vendor\ffmpeg.exe')">
+    <EmbeddedResource Include="..\vendor\ffmpeg.exe" LogicalName="KairoCast.ffmpeg.exe" />
+  </ItemGroup>
+
+</Project>
