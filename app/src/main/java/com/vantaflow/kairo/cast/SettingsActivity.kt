@@ -109,6 +109,9 @@ class SettingsActivity : Activity() {
         row(getString(R.string.set_boot), getString(if (settings.startOnBoot) R.string.on else R.string.off)) {
             settings.startOnBoot = !settings.startOnBoot; build()
         }
+        row(getString(R.string.set_open_on_power), getString(if (settings.openOnPowerOn) R.string.on else R.string.off)) {
+            settings.openOnPowerOn = !settings.openOnPowerOn; build()
+        }
         row(getString(R.string.set_overlay), getString(if (Settings.canDrawOverlays(this)) R.string.overlay_ok else R.string.overlay_no)) {
             if (!Settings.canDrawOverlays(this)) {
                 startActivity(

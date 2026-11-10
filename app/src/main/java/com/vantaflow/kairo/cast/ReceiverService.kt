@@ -57,6 +57,20 @@ class ReceiverService : Service() {
         }
     }
 
+    /** Sortie de veille : la TV ne redémarre pas, le service tourne déjà ; on rouvre l'accueil si demandé. */
+    private val screenOn = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_SCREEN_ON && CastSettings(PrefsStore(context)).openOnPowerOn) {
+                PowerOnOpener.open(context)
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        registerReceiver(screenOn, android.content.IntentFilter(Intent.ACTION_SCREEN_ON))
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -187,6 +201,7 @@ class ReceiverService : Service() {
 
     override fun onDestroy() {
         destroyed = true
+        try { unregisterReceiver(screenOn) } catch (_: IllegalArgumentException) {}
         audio.listener = {}
         main.removeCallbacksAndMessages(null)
         worker.execute { stopAll() }
