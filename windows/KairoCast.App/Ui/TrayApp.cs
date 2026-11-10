@@ -45,7 +45,11 @@ public sealed class TrayApp : ApplicationContext
         _controller.Start();
 
         _wait = ThreadPool.RegisterWaitForSingleObject(_showSignal, (_, _) => ui.Post(_ => _main.ShowAndFront(), null), null, Timeout.Infinite, false);
-        if (showWindow) _main.ShowAndFront();
+        // Démarrage toujours réduit près de l'horloge ; lancé à la main, une notification dit où trouver l'appli.
+        if (showWindow)
+            _tray.ShowBalloonTip(5000, "Kairo Cast est prêt",
+                (_settings.ReplaceWinK ? "Win+K" : "Win+Alt+K") + " pour partager l'écran vers la TV. Double-clic sur l'icône pour les réglages.",
+                ToolTipIcon.None);
     }
 
     /// <summary>À appeler en dernier, juste avant Application.Run.</summary>
