@@ -6,7 +6,9 @@ import java.nio.ByteBuffer
 import org.json.JSONObject
 
 enum class LinkType(val code: Int) {
-    HELLO(1), VIDEO(2), AUDIO(3), BYE(4), KEYREQ(5), PING(6);
+    HELLO(1), VIDEO(2), AUDIO(3), BYE(4), KEYREQ(5), PING(6),
+    /** Question « cet emplacement est-il occupé ? » (première trame, à la place de HELLO) ; réponse STATUS en JSON. */
+    STATUS(7);
 
     companion object {
         fun of(code: Int): LinkType? = values().firstOrNull { it.code == code }

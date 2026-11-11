@@ -23,6 +23,7 @@ class LinkServerTest {
         override fun onLinkVideo(data: ByteArray, size: Int, ptsUs: Long, key: Boolean) { videos.add(Triple(data.copyOf(size), ptsUs, key)) }
         override fun onLinkAudio(pcm: ByteArray, size: Int, ptsUs: Long) { audios.add(pcm.copyOf(size)) }
         override fun onLinkClosed() { events.add("closed") }
+        override fun status() = """{"busy":true,"source":"link","by":"PC-Salon"}"""
         fun next(ms: Long = 2000): String? = events.poll(ms, TimeUnit.MILLISECONDS)
     }
 
@@ -59,6 +60,19 @@ class LinkServerTest {
                 if (f.type == type) return f
             }
         } catch (_: Exception) { return null }
+    }
+
+    @Test fun statusAnswersWithoutTouchingTheSession() {
+        connect("PC-Salon")
+        assertEquals("open:PC-Salon", rec.next())
+        val q = Socket("127.0.0.1", server.boundPort)
+        sockets.add(q)
+        send(q, LinkFrame(LinkType.STATUS, 0, 0, ByteArray(0)))
+        val r = awaitFrame(q, LinkType.STATUS)
+        assertNotNull(r)
+        assertEquals("""{"busy":true,"source":"link","by":"PC-Salon"}""", String(r!!.payload, Charsets.UTF_8))
+        assertEquals(null, rec.next(300)) // la session du PC n'est ni fermée ni remplacée
+        assertTrue(server.hasClient)
     }
 
     @Test fun helloOpensSession() {

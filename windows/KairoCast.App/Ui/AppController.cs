@@ -25,10 +25,42 @@ public sealed class AppController : IDisposable
     /// <summary>La session en cours (ou en démarrage) utilise l'écran virtuel.</summary>
     private bool _virtualOn;
     private TvLayout _tvLayout = TvLayout.Off;
+    private readonly Dictionary<(System.Net.IPAddress, int), BoxStatus?> _status = new();
+    private readonly CancellationTokenSource _pollCts = new();
 
     public AppSettings Settings { get; }
     /// <summary>Box à afficher : manuelles, et découvertes sur un réseau actuel du PC.</summary>
     public IReadOnlyList<BoxInfo> Boxes => BoxDisplay.Visible(_boxes, IsManual, BoxDisplay.LocalNetworks());
+
+    /// <summary>Dernier état connu de la box (libre / occupée par …) ; null si inconnu ou box trop ancienne.</summary>
+    public BoxStatus? StatusOf(BoxInfo b) => _status.TryGetValue((b.Address, b.Port), out var s) ? s : null;
+
+    /// <summary>Interroge les box visibles toutes les quelques secondes (sauf celle qu'on partage).</summary>
+    private async Task PollStatusAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var boxes = Boxes.Where(b => !IsActive(b)).ToList();
+                var results = await Task.WhenAll(boxes.Select(async b =>
+                    (b, await BoxStatus.QueryAsync(new System.Net.IPEndPoint(b.Address, b.Port), TimeSpan.FromSeconds(2), ct))));
+                _ui.Post(_ =>
+                {
+                    var changed = false;
+                    foreach (var (b, st) in results)
+                    {
+                        var key = (b.Address, b.Port);
+                        if (!_status.TryGetValue(key, out var old) || old != st) { _status[key] = st; changed = true; }
+                    }
+                    if (changed) Changed?.Invoke();
+                }, null);
+                await Task.Delay(TimeSpan.FromSeconds(4), ct);
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception e) { Log.Warn("État des box : " + e.Message); try { await Task.Delay(TimeSpan.FromSeconds(4), ct); } catch { return; } }
+        }
+    }
 
     public bool IsManual(BoxInfo b) => _manual.Any(m => Same(m, b));
 
@@ -210,6 +242,7 @@ public sealed class AppController : IDisposable
             Log.Error("Découverte : démarrage impossible", e);
             _discoveryState = "Recherche des box impossible (voir le journal)";
         }
+        _ = Task.Run(() => PollStatusAsync(_pollCts.Token));
         // Pare-feu : une seule fois, hors du fil de l'interface (peut demander l'élévation UAC).
         if (!Settings.FirewallAsked)
         {
@@ -375,6 +408,7 @@ public sealed class AppController : IDisposable
 
     public void Dispose()
     {
+        _pollCts.Cancel();
         _startCts?.Cancel();
         var s = _session;
         _session = null;

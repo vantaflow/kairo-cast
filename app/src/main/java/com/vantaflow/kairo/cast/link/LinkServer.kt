@@ -19,6 +19,8 @@ interface LinkListener {
     fun onLinkVideo(data: ByteArray, size: Int, ptsUs: Long, key: Boolean)
     fun onLinkAudio(pcm: ByteArray, size: Int, ptsUs: Long)
     fun onLinkClosed()
+    /** Réponse à STATUS : {"busy":bool,"source":"airplay"|"link"|"","by":nom de l'émetteur}. */
+    fun status(): String = "{}"
 }
 
 /**
@@ -140,6 +142,13 @@ class LinkServer(
                     if (!helloReceived) { log("Link : pas de HELLO en ${helloTimeoutMs} ms ($peer)"); finish() }
                 }, "kairo-link-hello").apply { isDaemon = true; start() }
                 val first = try { LinkCodec.read(input, MAX_HELLO_PAYLOAD) } finally { helloReceived = true; deadline.interrupt() }
+                if (first?.type == LinkType.STATUS) {
+                    // Simple question d'état : réponse puis fermeture, la session en cours n'est pas touchée.
+                    val body = try { listener.status() } catch (e: Exception) { "{}" }
+                    socket.getOutputStream().write(LinkCodec.encode(LinkFrame(LinkType.STATUS, 0, 0, body.toByteArray(Charsets.UTF_8))))
+                    socket.getOutputStream().flush()
+                    return
+                }
                 if (first == null || first.type != LinkType.HELLO) throw LinkProtocolException("HELLO attendu")
                 val hello = Hello.parse(first.payload)
                 if (hello.v != 1 || !SlotPolicy.isValidSize(hello.w, hello.h)) throw LinkProtocolException("HELLO non pris en charge")

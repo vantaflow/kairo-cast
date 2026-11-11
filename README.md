@@ -108,6 +108,7 @@ Retour ramène à l'accueil ; la recopie continue et **Reprendre la recopie** la
 - **Nombre de sources**, **Mosaïque**, **Son des sources** : voir [Plusieurs sources](#plusieurs-sources-mosaïque).
 - **Son** : activé ou non.
 - **Démarrage avec la box** : le récepteur se lance au démarrage.
+- **Ouvrir à l'allumage de la TV** (désactivé par défaut) : l'accueil de Kairo Cast s'affiche quand la TV sort de veille ou démarre, utile sur une TV sans launcher Kairo.
 - **Afficher par-dessus les autres applis** : autorisation nécessaire pour que la recopie s'ouvre au-dessus d'une autre application.
 
 ## Dépannage

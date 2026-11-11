@@ -19,6 +19,7 @@ class CastSettingsTest {
         assertEquals(DisplayMode.STRETCH, s.displayMode)
         assertTrue(s.audioEnabled)
         assertTrue(s.startOnBoot)
+        assertFalse(s.openOnPowerOn)
         assertTrue(Regex("^([0-9a-f]{2}:){5}[0-9a-f]{2}$").matches(s.deviceId))
     }
 
@@ -56,11 +57,13 @@ class CastSettingsTest {
         s.displayMode = DisplayMode.FIT
         s.audioEnabled = false
         s.startOnBoot = false
+        s.openOnPowerOn = true
         s.name = "Salon"
         val t = CastSettings(store, Random(1))
         assertEquals(DisplayMode.FIT, t.displayMode)
         assertFalse(t.audioEnabled)
         assertFalse(t.startOnBoot)
+        assertTrue(t.openOnPowerOn)
         assertEquals("Salon", t.name)
     }
 

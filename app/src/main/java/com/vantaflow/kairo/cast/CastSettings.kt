@@ -104,6 +104,11 @@ class CastSettings(
         get() = store.getString(KEY_BOOT) != "false"
         set(value) = store.putString(KEY_BOOT, value.toString())
 
+    /** Afficher l'accueil de Kairo Cast quand la TV sort de veille ou démarre (désactivé par défaut). */
+    var openOnPowerOn: Boolean
+        get() = store.getString(KEY_OPEN_ON_POWER) == "true"
+        set(value) = store.putString(KEY_OPEN_ON_POWER, value.toString())
+
     val deviceId: String
         get() = slotDeviceId(0)
 
@@ -111,6 +116,7 @@ class CastSettings(
         const val KEY_QUALITY = "stream_quality"
         const val KEY_AUDIO = "audio_enabled"
         const val KEY_BOOT = "start_on_boot"
+        const val KEY_OPEN_ON_POWER = "open_on_power_on"
         const val KEY_MOSAIC = "mosaic_mode"
         const val KEY_AUDIO_PIN = "audio_pin"
         const val KEY_SLOT_COUNT = "slot_count"

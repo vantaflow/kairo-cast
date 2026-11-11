@@ -41,6 +41,7 @@
     <string name="instruction_single">Sur le Mac : Centre de contrôle › Recopie de l\'écran › %1$s</string>
     <string name="set_audio">Son</string>
     <string name="set_boot">Démarrage avec la box</string>
+    <string name="set_open_on_power">Ouvrir à l\'allumage de la TV</string>
     <string name="set_overlay">Afficher par-dessus les autres applis</string>
     <string name="mode_stretch">Étirer</string>
     <string name="mode_fill">Remplir</string>

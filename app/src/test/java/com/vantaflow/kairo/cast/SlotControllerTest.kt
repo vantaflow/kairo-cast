@@ -169,6 +169,21 @@ class SlotControllerTest {
         assertEquals(SlotPhase.WAITING, phase(0))
     }
 
+    @Test fun statusTellsWhoIsMirroring() {
+        val c = controller(0, 1); c.start()
+        val link = host.links[0]!!
+        assertTrue(link.listener.status().contains("\"busy\":false"))
+        link.listener.onLinkOpened(Hello(1, "PC Bureau", 1920, 1080, 30, "pcm"))
+        val s = org.json.JSONObject(link.listener.status())
+        assertEquals(true, s.getBoolean("busy"))
+        assertEquals("link", s.getString("source"))
+        assertEquals("PC Bureau", s.getString("by"))
+        link.listener.onLinkClosed()
+        host.native.listeners[0]!!.onConnectionOpened()
+        host.native.listeners[0]!!.onVideoFormat(1440, 900, 0, 0, 1440, 900)
+        assertEquals("airplay", org.json.JSONObject(link.listener.status()).getString("source"))
+    }
+
     @Test fun airplayArrivalClosesLinkSession() {
         val c = controller(0, 1); c.start()
         val link = host.links[0]!!
