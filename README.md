@@ -45,9 +45,19 @@ La définition annoncée au Mac dépend du réglage **Netteté** et du nombre de
 
 Windows ne sait pas envoyer son écran à un récepteur AirPlay, et une appli Android ne peut pas recevoir le Miracast natif de Windows : d'où **Kairo Cast pour Windows**, qui capture l'écran et le son du PC et les envoie à la box par le réseau local (protocole Kairo Link).
 
-1. Lancer **KairoCast.exe** : l'appli se place près de l'horloge (zone de notification).
-2. Appuyer sur **Win+K** (ou cliquer sur l'icône) : le panneau « Partager l'écran vers… » liste les box Kairo du réseau.
-3. Cliquer sur **Partager** à côté de la box. Le même bouton arrête le partage. Avec l'écran virtuel, **Win+P** (ou les boutons **Dupliquer** / **Étendre** du panneau) choisit ce que montre la TV pendant le partage.
+1. Lancer **KairoCast.exe** : l'appli démarre réduite près de l'horloge (zone de notification) et l'annonce par une notification.
+2. Appuyer sur **Win+K** (ou double-cliquer sur l'icône) : le panneau « Partager l'écran vers… » liste les box Kairo du réseau, avec l'état de chaque source : *libre*, *occupée par PC-Bureau*, *occupée (Mac ou iPhone)*.
+3. Cliquer sur **Partager** à côté d'une source libre. Le même bouton arrête le partage.
+
+### Dupliquer ou Étendre (Win+P)
+
+Avec l'option **La TV devient un écran de Windows pendant le partage**, la TV se comporte comme un écran branché : **Win+P › Dupliquer** (par défaut) ou **Étendre**, et la box suit sans couper.
+
+- Une seule autorisation administrateur, au clic sur **Activer l'écran virtuel…** : Kairo Cast installe au besoin le pilote libre [Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver) (MIT) et prépare son activation.
+- Hors partage, l'écran virtuel est désactivé : Windows ne le voit pas.
+- À l'arrêt du partage (ou au lancement suivant après un plantage), la disposition des écrans d'avant revient, les fenêtres restées sur la TV reviennent sur l'écran principal et l'écran virtuel est désactivé.
+- Si Windows refuse la recopie, le partage se fait sans écran virtuel, sans toucher à l'affichage.
+- Option décochée : la TV recopie simplement l'écran choisi, comme avant. Avec l'écran virtuel, **Win+P** (ou les boutons **Dupliquer** / **Étendre** du panneau) choisit ce que montre la TV pendant le partage.
 
 Fenêtre principale (clic sur l'icône) :
 

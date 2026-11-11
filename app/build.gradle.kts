@@ -15,8 +15,8 @@ android {
         applicationId = "com.vantaflow.kairo.cast"
         minSdk = 30
         targetSdk = 34
-        versionCode = 10101
-        versionName = "1.1.1"
+        versionCode = 10200
+        versionName = "1.2.0"
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
