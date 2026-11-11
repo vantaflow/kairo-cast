@@ -60,7 +60,8 @@ public sealed class BoxListControl : FlowLayoutPanel
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, manual ? LogicalToDeviceUnits(34) : 0));
             row.Controls.Add(new Label
             {
-                Text = BoxDisplay.Label(box, visible) + (manual ? "  (ajoutée à la main)" : ""), ForeColor = _fore, AutoEllipsis = true, Dock = DockStyle.Fill,
+                Text = BoxDisplay.Label(box, visible) + (manual ? "  (ajoutée à la main)" : "")
+                       + (active ? "  ·  partagée depuis ce PC" : _c.StatusOf(box) is { } st ? "  ·  " + st.Describe() : ""), ForeColor = _fore, AutoEllipsis = true, Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, active ? FontStyle.Bold : FontStyle.Regular),
             }, 0, 0);
             var b = new Button

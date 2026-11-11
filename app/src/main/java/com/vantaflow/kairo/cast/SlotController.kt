@@ -87,6 +87,7 @@ class SlotController(
     @Volatile private var link: LinkEndpoint? = null
     private var unadvertise: (() -> Unit)? = null
     private var started = false
+    @Volatile private var linkPeer = ""
     @Volatile private var width = 0
     @Volatile private var height = 0
 
@@ -343,6 +344,7 @@ class SlotController(
         override fun onLinkOpened(hello: Hello) {
             if (!accepting) return
             beginSession(MirrorSource.LINK)
+            linkPeer = hello.name
             Log.i(TAG, "[$slot] Link : session ouverte (${hello.name} ${hello.w}x${hello.h})")
             val ok = onStreamFormat(hello.w, hello.h)
             if (ok) host.pipeline(slot)?.onVideoFormat(hello.w, hello.h, 0, 0, hello.w, hello.h)
@@ -361,12 +363,20 @@ class SlotController(
             Log.i(TAG, "[$slot] Link : session fermée")
             endSession(MirrorSource.LINK)
         }
+        override fun status(): String = slotStatusJson(owner, linkPeer)
     }
 
     private companion object {
         const val TAG = "KairoCast"
     }
 }
+
+/** État d'un emplacement pour la question STATUS de Kairo Link (le PC montre « occupé par … »). */
+fun slotStatusJson(owner: MirrorSource, linkPeer: String): String = org.json.JSONObject()
+    .put("busy", owner != MirrorSource.NONE)
+    .put("source", when (owner) { MirrorSource.AIRPLAY -> "airplay"; MirrorSource.LINK -> "link"; else -> "" })
+    .put("by", if (owner == MirrorSource.LINK) linkPeer else "")
+    .toString()
 
 /** Adaptateur [LinkServer] → [LinkEndpoint]. */
 class RealLinkEndpoint(port: Int, listener: LinkListener) : LinkEndpoint {
