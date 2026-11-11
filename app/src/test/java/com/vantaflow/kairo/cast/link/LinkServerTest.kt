@@ -71,8 +71,9 @@ class LinkServerTest {
         val r = awaitFrame(q, LinkType.STATUS)
         assertNotNull(r)
         assertEquals("""{"busy":true,"source":"link","by":"PC-Salon"}""", String(r!!.payload, Charsets.UTF_8))
-        assertEquals(null, rec.next(300)) // la session du PC n'est ni fermée ni remplacée
+        // La session du PC n'est ni fermée ni remplacée (vérifié tout de suite : le délai d'inactivité du test est court).
         assertTrue(server.hasClient)
+        assertTrue(rec.events.isEmpty())
     }
 
     @Test fun helloOpensSession() {
