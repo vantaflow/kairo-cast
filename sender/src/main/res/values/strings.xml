@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kairo Cast Envoi</string>
+    <string name="intro">Choisissez une source de la TV pour y afficher l\'écran et le son de cet appareil. La TV et l\'appareil doivent être sur le même réseau Wi-Fi.</string>
+    <string name="device_name">Nom affiché sur la TV</string>
+    <string name="send_audio">Envoyer le son</string>
+    <string name="sources">Sources de la TV</string>
+    <string name="searching">Recherche des sources Kairo Cast…</string>
+    <string name="state_free">libre</string>
+    <string name="state_unknown">état inconnu</string>
+    <string name="state_here">partagée depuis cet appareil</string>
+    <string name="state_stopped">Partage arrêté</string>
+    <string name="stop">Arrêter</string>
+    <string name="channel">Partage d\'écran</string>
+    <string name="notif_connecting">Connexion à %1$s…</string>
+    <string name="notif_sharing">Partage en cours vers %1$s</string>
+    <string name="err_capture">Capture de l\'écran refusée</string>
+    <string name="err_encoder">Encodeur vidéo indisponible : partage arrêté</string>
+    <string name="err_unreachable">%1$s ne répond pas : vérifiez le Wi-Fi</string>
+    <string name="busy_title">Source occupée</string>
+    <string name="busy_message">%1$s est %2$s. Partager quand même ? L\'autre partage sera remplacé.</string>
+    <string name="share">Partager</string>
+    <string name="cancel">Annuler</string>
+    <string name="audio_denied">Sans l\'autorisation du micro, Android ne laisse pas capturer le son : partage de l\'image seule.</string>
+</resources>

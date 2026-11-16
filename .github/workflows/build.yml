@@ -30,6 +30,10 @@ jobs:
         with:
           name: kairo-cast-release
           path: app/build/outputs/apk/release/*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kairo-cast-envoi-release
+          path: sender/build/outputs/apk/release/*.apk
 
   windows:
     runs-on: windows-latest

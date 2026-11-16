@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "kairo-cast"
-include(":app")
+include(":app", ":link", ":sender")
