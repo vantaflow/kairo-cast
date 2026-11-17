@@ -2,14 +2,15 @@
 
 [![Dernière version](https://img.shields.io/github/v/release/vantaflow/kairo-cast?label=version&color=2563eb)](https://github.com/vantaflow/kairo-cast/releases/latest) ![Android TV 11+](https://img.shields.io/badge/Android%20TV-11%2B-3ddc84) ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4) ![Code Downloader 2534592](https://img.shields.io/badge/Downloader-2534592-f97316)
 
-**L'écran du Mac, de l'iPhone ou du PC Windows sur la TV**, avec le son, sans limite de durée et sans abonnement. Kairo Cast est un récepteur de recopie d'écran pour Android TV, compagnon du launcher [Kairo](https://github.com/vantaflow/kairo). Il peut afficher jusqu'à **quatre écrans à la fois** en mosaïque.
+**L'écran du Mac, de l'iPhone, du PC Windows ou du téléphone Android sur la TV**, avec le son, sans limite de durée et sans abonnement. Kairo Cast est un récepteur de recopie d'écran pour Android TV, compagnon du launcher [Kairo](https://github.com/vantaflow/kairo). Il peut afficher jusqu'à **quatre écrans à la fois** en mosaïque.
 
 | Appareil qui envoie | Comment | Ce qu'il faut |
 |---|---|---|
 | Mac, iPhone, iPad | AirPlay, intégré au système | rien à installer |
 | PC Windows 10/11 | appli **Kairo Cast pour Windows** | [KairoCast.exe](https://github.com/vantaflow/kairo-cast/releases/latest/download/KairoCast.exe) |
+| Téléphone ou tablette Android 10+ | appli **Kairo Cast Envoi** | [kairo-cast-envoi.apk](https://github.com/vantaflow/kairo-cast/releases/latest/download/kairo-cast-envoi.apk) |
 
-Sommaire : [Installation](#installation) · [Depuis un Mac ou un iPhone](#depuis-un-mac-ou-un-iphone) · [Depuis un PC Windows](#depuis-un-pc-windows) · [Plusieurs sources](#plusieurs-sources-mosaïque) · [Télécommande](#télécommande-pendant-la-recopie) · [Réglages](#réglages-de-la-box) · [Dépannage](#dépannage) · [Compilation](#compilation) · [Licence](#licence-et-crédits)
+Sommaire : [Installation](#installation) · [Depuis un Mac ou un iPhone](#depuis-un-mac-ou-un-iphone) · [Depuis un PC Windows](#depuis-un-pc-windows) · [Depuis un téléphone Android](#depuis-un-téléphone-ou-une-tablette-android) · [Plusieurs sources](#plusieurs-sources-mosaïque) · [Télécommande](#télécommande-pendant-la-recopie) · [Réglages](#réglages-de-la-box) · [Dépannage](#dépannage) · [Compilation](#compilation) · [Licence](#licence-et-crédits)
 
 ## Installation
 
@@ -32,6 +33,10 @@ Télécharger **[KairoCast.exe](https://github.com/vantaflow/kairo-cast/releases
 - **Prérequis** : Windows 10 version 1903 ou plus récent, ou Windows 11, 64 bits.
 - L'exécutable n'est pas signé : SmartScreen affiche un avertissement la première fois, cliquer sur **Informations complémentaires › Exécuter quand même**.
 - Au premier partage, Windows demande d'autoriser l'appli sur le réseau : accepter **Réseau privé** (sinon la box n'est pas trouvée).
+
+### Sur le téléphone ou la tablette Android (Android 10 ou plus récent)
+
+Installer **[kairo-cast-envoi.apk](https://github.com/vantaflow/kairo-cast/releases/latest/download/kairo-cast-envoi.apk)** (autoriser l'installation depuis le navigateur si Android le demande). Signée avec la clé Kairo.
 
 ## Depuis un Mac ou un iPhone
 
@@ -90,6 +95,18 @@ Installation, seulement sur clic (bouton **Installer l'écran virtuel…** de la
 - En ligne de commande : `KairoCast.exe --setup-virtual-display`.
 - **Désinstallation** : `schtasks /delete /tn \KairoCast\VirtualDisplayOn /f` et `schtasks /delete /tn \KairoCast\VirtualDisplayOff /f` (invite de commandes administrateur) ; **Gestionnaire de périphériques › Cartes graphiques › Virtual Display Driver › Désinstaller l'appareil**, en cochant **Tenter de supprimer le pilote de cet appareil** ; puis `winget uninstall --id VirtualDrivers.Virtual-Display-Driver -e`. On peut aussi supprimer le dossier `C:\VirtualDisplayDriver` et, dans `certlm.msc › Éditeurs approuvés`, le certificat « SignPath Foundation ».
 
+## Depuis un téléphone ou une tablette Android
+
+Le partage d'écran natif d'Android (Cast / Chromecast) ne peut pas viser une appli Android TV : d'où **Kairo Cast Envoi**, qui envoie l'écran et le son du téléphone à la box par Kairo Link, comme l'appli Windows.
+
+1. Ouvrir **Kairo Cast Envoi** : les sources de la box apparaissent, avec leur état (*libre*, *occupée par…*).
+2. Appuyer sur une source, puis accepter la capture de l'écran (et le micro, que demande Android pour capturer le son des applis).
+3. Pour arrêter : bouton **Arrêter** dans l'appli ou dans la notification.
+
+- L'image suit la rotation du téléphone (paysage pour une vidéo, portrait sinon).
+- Le nom affiché sur la TV et l'envoi du son se règlent dans l'appli.
+- Certaines applis (appels, quelques applis vidéo) interdisent la capture de leur son : l'image passe, sans le son.
+
 ## Plusieurs sources (mosaïque)
 
 Dans les réglages de la box, **Nombre de sources** (1 à 4) crée autant de récepteurs, chacun avec son propre nom, visible sur le Mac, l'iPhone et le PC. Plusieurs appareils peuvent alors recopier en même temps :
@@ -138,7 +155,8 @@ Retour ramène à l'accueil ; la recopie continue et **Reprendre la recopie** la
 Application Android : JDK 17, SDK Android 34, NDK 27.2.12479018.
 
 ```
-./gradlew :app:testDebugUnitTest :app:assembleRelease
+./gradlew :app:testDebugUnitTest :app:assembleRelease      # box
+./gradlew :sender:testDebugUnitTest :sender:assembleRelease  # Kairo Cast Envoi (téléphone)
 ```
 
 La release est signée avec `keystore.properties` (non versionné : `storeFile`, `storePassword`, `keyAlias`, `keyPassword`) s'il existe, sinon avec la clé de debug. `scripts/sign-apk.sh <entrée.apk> <sortie.apk>` signe avec cette clé un APK déjà compilé (par exemple celui de la CI).
@@ -163,6 +181,7 @@ La CI GitHub compile les deux à chaque envoi (artefacts `kairo-cast-release` et
 
 - **AirPlay** : serveur natif basé sur UxPlay, un par source, annoncé en mDNS (`_airplay._tcp`, `_raop._tcp`). Vidéo H.264 décodée par le matériel de la box, son AAC.
 - **Kairo Link** (Windows) : la box annonce `_kairocast._tcp` ; le PC capture l'écran (Windows.Graphics.Capture : l'écran de la TV quand l'écran virtuel est là, sinon l'écran choisi), l'encode en H.264 par la carte graphique et l'envoie en TCP, avec le son en PCM. Comme AirPlay sans code, Kairo Link accepte n'importe quel appareil du réseau local.
+- **Kairo Link** (Android, module `sender`) : le téléphone trouve les sources par mDNS (NsdManager), capture l'écran (MediaProjection), l'encode en H.264 par l'encodeur matériel (MediaCodec) et capture le son des applis (AudioPlaybackCapture, PCM 48 kHz stéréo). Le codec des trames est partagé avec la box (module `link`).
 
 ## Licence et crédits
 
