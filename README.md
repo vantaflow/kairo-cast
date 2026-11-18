@@ -12,6 +12,8 @@
 
 Sommaire : [Installation](#installation) · [Depuis un Mac ou un iPhone](#depuis-un-mac-ou-un-iphone) · [Depuis un PC Windows](#depuis-un-pc-windows) · [Depuis un téléphone Android](#depuis-un-téléphone-ou-une-tablette-android) · [Plusieurs sources](#plusieurs-sources-mosaïque) · [Télécommande](#télécommande-pendant-la-recopie) · [Réglages](#réglages-de-la-box) · [Dépannage](#dépannage) · [Compilation](#compilation) · [Licence](#licence-et-crédits)
 
+Disponible en **français, anglais, espagnol et arabe** (affichage de droite à gauche) : Kairo Cast et Kairo Cast Envoi suivent la langue de l'appareil.
+
 ## Installation
 
 ### Sur la TV ou la box (Android TV 11 ou plus récent)
