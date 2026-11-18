@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kairo Cast Enviar</string>
+    <string name="intro">Elige una fuente de la TV para mostrar en ella la pantalla y el sonido de este dispositivo. La TV y el dispositivo deben estar en la misma red Wi-Fi.</string>
+    <string name="device_name">Nombre mostrado en la TV</string>
+    <string name="send_audio">Enviar el sonido</string>
+    <string name="sources">Fuentes de la TV</string>
+    <string name="searching">Buscando fuentes Kairo Cast…</string>
+    <string name="state_free">libre</string>
+    <string name="state_unknown">estado desconocido</string>
+    <string name="state_here">compartida desde este dispositivo</string>
+    <string name="state_stopped">Se dejó de compartir</string>
+    <string name="stop">Detener</string>
+    <string name="channel">Compartir pantalla</string>
+    <string name="notif_connecting">Conectando con %1$s…</string>
+    <string name="notif_sharing">Compartiendo con %1$s</string>
+    <string name="err_capture">Captura de pantalla rechazada</string>
+    <string name="err_encoder">Codificador de vídeo no disponible: se dejó de compartir</string>
+    <string name="err_unreachable">%1$s no responde: comprueba el Wi-Fi</string>
+    <string name="busy_title">Fuente ocupada</string>
+    <string name="busy_message">%1$s está %2$s. ¿Compartir de todos modos? Se reemplazará la otra transmisión.</string>
+    <string name="share">Compartir</string>
+    <string name="cancel">Cancelar</string>
+    <string name="audio_denied">Sin el permiso del micrófono, Android no permite capturar el sonido: solo se comparte la imagen.</string>
+    <string name="state_busy_by">ocupada por %1$s</string>
+    <string name="state_busy_apple">ocupada (Mac o iPhone)</string>
+    <string name="state_busy">ocupada</string>
+    <string name="closed_by_box">El receptor cerró la sesión</string>
+    <string name="closed_silent">El receptor ya no responde</string>
+    <string name="closed_lost">Se perdió la conexión con el receptor</string>
+</resources>

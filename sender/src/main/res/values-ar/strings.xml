@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kairo Cast إرسال</string>
+    <string name="intro">اختر مصدرًا على التلفزيون لعرض شاشة هذا الجهاز وصوته عليه. يجب أن يكون التلفزيون والجهاز على شبكة Wi-Fi نفسها.</string>
+    <string name="device_name">الاسم المعروض على التلفزيون</string>
+    <string name="send_audio">إرسال الصوت</string>
+    <string name="sources">مصادر التلفزيون</string>
+    <string name="searching">جارٍ البحث عن مصادر Kairo Cast…</string>
+    <string name="state_free">متاح</string>
+    <string name="state_unknown">حالة غير معروفة</string>
+    <string name="state_here">تتم المشاركة من هذا الجهاز</string>
+    <string name="state_stopped">توقفت المشاركة</string>
+    <string name="stop">إيقاف</string>
+    <string name="channel">مشاركة الشاشة</string>
+    <string name="notif_connecting">جارٍ الاتصال بـ %1$s…</string>
+    <string name="notif_sharing">المشاركة جارية إلى %1$s</string>
+    <string name="err_capture">تم رفض التقاط الشاشة</string>
+    <string name="err_encoder">مُرمِّز الفيديو غير متاح: توقفت المشاركة</string>
+    <string name="err_unreachable">%1$s لا يستجيب: تحقق من شبكة Wi-Fi</string>
+    <string name="busy_title">المصدر مشغول</string>
+    <string name="busy_message">%1$s %2$s. هل تريد المشاركة على أي حال؟ ستُستبدل المشاركة الأخرى.</string>
+    <string name="share">مشاركة</string>
+    <string name="cancel">إلغاء</string>
+    <string name="audio_denied">بدون إذن الميكروفون، لا يسمح Android بالتقاط الصوت: ستتم مشاركة الصورة فقط.</string>
+    <string name="state_busy_by">مشغول بواسطة %1$s</string>
+    <string name="state_busy_apple">مشغول (Mac أو iPhone)</string>
+    <string name="state_busy">مشغول</string>
+    <string name="closed_by_box">أنهى جهاز الاستقبال الجلسة</string>
+    <string name="closed_silent">جهاز الاستقبال لم يعد يستجيب</string>
+    <string name="closed_lost">انقطع الاتصال بجهاز الاستقبال</string>
+</resources>

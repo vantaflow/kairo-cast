@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kairo Cast Send</string>
+    <string name="intro">Choose a TV source to show this device\'s screen and sound on it. The TV and this device must be on the same Wi-Fi network.</string>
+    <string name="device_name">Name shown on the TV</string>
+    <string name="send_audio">Send sound</string>
+    <string name="sources">TV sources</string>
+    <string name="searching">Looking for Kairo Cast sources…</string>
+    <string name="state_free">available</string>
+    <string name="state_unknown">unknown status</string>
+    <string name="state_here">shared from this device</string>
+    <string name="state_stopped">Sharing stopped</string>
+    <string name="stop">Stop</string>
+    <string name="channel">Screen sharing</string>
+    <string name="notif_connecting">Connecting to %1$s…</string>
+    <string name="notif_sharing">Sharing to %1$s</string>
+    <string name="err_capture">Screen capture denied</string>
+    <string name="err_encoder">Video encoder unavailable: sharing stopped</string>
+    <string name="err_unreachable">%1$s is not responding: check the Wi-Fi</string>
+    <string name="busy_title">Source in use</string>
+    <string name="busy_message">%1$s is %2$s. Share anyway? The other share will be replaced.</string>
+    <string name="share">Share</string>
+    <string name="cancel">Cancel</string>
+    <string name="audio_denied">Without microphone permission, Android does not allow sound capture: sharing the picture only.</string>
+    <string name="state_busy_by">in use by %1$s</string>
+    <string name="state_busy_apple">in use (Mac or iPhone)</string>
+    <string name="state_busy">in use</string>
+    <string name="closed_by_box">The box closed the session</string>
+    <string name="closed_silent">The box is no longer responding</string>
+    <string name="closed_lost">Connection to the box lost</string>
+</resources>
