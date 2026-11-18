@@ -9,9 +9,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingLeft="96dp"
+        android:paddingStart="96dp"
         android:paddingTop="16dp"
-        android:paddingRight="96dp"
+        android:paddingEnd="96dp"
         android:paddingBottom="16dp">
 
         <TextView

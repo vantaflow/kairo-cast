@@ -54,14 +54,14 @@ class MirrorTile(context: Context, val slot: Int) : FrameLayout(context) {
         label.setPadding((12 * d).toInt(), (6 * d).toInt(), (12 * d).toInt(), (6 * d).toInt())
         label.alpha = 0f
         addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START).apply {
-            leftMargin = FOCUS_PX; topMargin = FOCUS_PX
+            marginStart = FOCUS_PX; topMargin = FOCUS_PX
         })
         speaker.setImageResource(R.drawable.ic_speaker)
         speaker.setBackgroundColor(context.getColor(R.color.tile_label_bg))
         speaker.setPadding((4 * d).toInt(), (4 * d).toInt(), (4 * d).toInt(), (4 * d).toInt())
         speaker.visibility = View.GONE
         addView(speaker, LayoutParams((36 * d).toInt(), (36 * d).toInt(), Gravity.TOP or Gravity.END).apply {
-            rightMargin = FOCUS_PX; topMargin = FOCUS_PX
+            marginEnd = FOCUS_PX; topMargin = FOCUS_PX
         })
         texture.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, orr, ob ->
             if (r - l != orr - ol || b - t != ob - ot) applyTransform()
@@ -132,7 +132,8 @@ class MirrorTile(context: Context, val slot: Int) : FrameLayout(context) {
         val lp = (layoutParams as? FrameLayout.LayoutParams) ?: FrameLayout.LayoutParams(width, height)
         if (lp.width != width || lp.height != height || lp.leftMargin != left || lp.topMargin != top) {
             lp.width = width; lp.height = height; lp.leftMargin = left; lp.topMargin = top
-            lp.gravity = Gravity.TOP or Gravity.START
+            // Position absolue (gauche) : la mosaïque n'est jamais inversée en droite à gauche.
+            lp.gravity = Gravity.TOP or Gravity.LEFT
             layoutParams = lp
         }
     }
