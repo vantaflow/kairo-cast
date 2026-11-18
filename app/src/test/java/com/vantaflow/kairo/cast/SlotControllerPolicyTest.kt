@@ -99,7 +99,7 @@ class SlotControllerPolicyTest {
         pair(one)
         for (s in 0..1) { host.native.listeners[s]!!.onConnectionOpened(); host.native.listeners[s]!!.onVideoFormat(1920, 1080, 0, 0, 1920, 1080) }
         assertEquals(SlotPhase.SATURATED, phase(1))
-        assertEquals("Trop de sources pour cette box", SlotPolicy.MESSAGE_SATURATED)
+        assertEquals(R.string.slot_saturated, SlotPolicy.MESSAGE_SATURATED)
     }
 
     @Test fun releaseOfOtherSlotResumesSaturated() {

@@ -281,7 +281,7 @@ class SlotController(
             SaturationAction.RUN -> { saturated = false; setPhase(SlotPhase.MIRRORING); true }
             SaturationAction.REFUSE_KEEP_SESSION, SaturationAction.REFUSE_CLOSE_LINK -> {
                 saturated = true
-                Log.w(TAG, "[$slot] ${SlotPolicy.MESSAGE_SATURATED} (${w}x$h)")
+                Log.w(TAG, "[$slot] Trop de sources pour cette box (${w}x$h)")
                 setPhase(SlotPhase.SATURATED)
                 false
             }

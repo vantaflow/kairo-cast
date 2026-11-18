@@ -108,7 +108,7 @@ class SlotPolicyTest {
     }
 
     @Test fun messageIsExact() {
-        assertEquals("Trop de sources pour cette box", SlotPolicy.MESSAGE_SATURATED)
+        assertEquals(R.string.slot_saturated, SlotPolicy.MESSAGE_SATURATED)
     }
 
     @Test fun announcedSizesRespectBoxDecoderLimits() {

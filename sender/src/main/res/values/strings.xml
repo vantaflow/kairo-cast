@@ -22,4 +22,10 @@
     <string name="share">Partager</string>
     <string name="cancel">Annuler</string>
     <string name="audio_denied">Sans l\'autorisation du micro, Android ne laisse pas capturer le son : partage de l\'image seule.</string>
+    <string name="state_busy_by">occupée par %1$s</string>
+    <string name="state_busy_apple">occupée (Mac ou iPhone)</string>
+    <string name="state_busy">occupée</string>
+    <string name="closed_by_box">La box a fermé la session</string>
+    <string name="closed_silent">La box ne répond plus</string>
+    <string name="closed_lost">Connexion avec la box perdue</string>
 </resources>

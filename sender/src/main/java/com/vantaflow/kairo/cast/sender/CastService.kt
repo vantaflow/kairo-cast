@@ -139,7 +139,7 @@ class CastService : Service() {
         encoder = enc
         val l = LinkSender(b.host, b.port, Hello(1, deviceName, enc.width, enc.height, ScreenEncoder.FPS, AudioCapturer.FORMAT),
             onKeyFrameRequested = { encoder?.requestKeyFrame() },
-            onClosed = { reason -> if (reason != null) main.post { if (link != null) stopCast(reason) } })
+            onClosed = { reason -> if (reason != null) main.post { if (link != null) stopCast(getString(reason.text)) } })
         try {
             l.connect()
         } catch (e: Exception) {

@@ -20,7 +20,7 @@ class SettingsActivity : Activity() {
     private lateinit var settings: CastSettings
     private lateinit var rows: LinearLayout
     private val labels = object : SettingsRows.Labels {
-        override fun sourceN(n: Int, name: String) = getString(R.string.source_n, n, name)
+        override fun sourceN(n: Int, name: String) = latinString(R.string.source_n, n, name)
         override fun qualityFixed() = getString(R.string.quality_fixed)
         override fun audioFollow() = getString(R.string.audio_follow)
         override fun quality(q: StreamQuality) = getString(when (q) {
@@ -142,7 +142,7 @@ class SettingsActivity : Activity() {
             setSelectAllOnFocus(true)
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle(if (settings.slotCount == 1) getString(R.string.set_name) else getString(R.string.set_source_n, slot + 1))
+            .setTitle(if (settings.slotCount == 1) getString(R.string.set_name) else latinString(R.string.set_source_n, slot + 1))
             .setView(input)
             .setPositiveButton(getString(R.string.save), null)
             .setNegativeButton(getString(R.string.cancel), null)

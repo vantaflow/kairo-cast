@@ -11,6 +11,13 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** Raison d'une fin de session décidée côté box ou réseau ; [text] = ressource affichée, [log] = journal. */
+enum class CloseReason(val text: Int, val log: String) {
+    BOX_CLOSED(R.string.closed_by_box, "la box a fermé la session"),
+    BOX_SILENT(R.string.closed_silent, "la box ne répond plus"),
+    CONNECTION_LOST(R.string.closed_lost, "connexion avec la box perdue"),
+}
+
 /**
  * Client Kairo Link : HELLO, puis vidéo (H.264 Annex-B) et son (PCM s16le 48 kHz stéréo).
  * Un fil d'écriture vide la [SendQueue], un fil de lecture traite KEYREQ / BYE ; PING toutes les
@@ -22,7 +29,7 @@ class LinkSender(
     private val hello: Hello,
     private val onKeyFrameRequested: () -> Unit,
     /** Appelé une seule fois : null = fermeture demandée ici, sinon la raison affichée. */
-    private val onClosed: (String?) -> Unit,
+    private val onClosed: (CloseReason?) -> Unit,
     private val timeoutMs: Int = 6000,
     private val pingMs: Long = 2000,
     private val queue: SendQueue = SendQueue(),
@@ -76,9 +83,9 @@ class LinkSender(
         onClosed(null)
     }
 
-    private fun fail(reason: String) {
+    private fun fail(reason: CloseReason) {
         if (!finished.compareAndSet(false, true)) return
-        log("Liaison : $reason")
+        log("Liaison : ${reason.log}")
         queue.close()
         try { socket.close() } catch (_: Exception) {}
         onClosed(reason)
@@ -97,7 +104,7 @@ class LinkSender(
                 out.write(b)
             }
         } catch (e: Exception) {
-            fail("Connexion avec la box perdue")
+            fail(CloseReason.CONNECTION_LOST)
         }
     }
 
@@ -105,17 +112,17 @@ class LinkSender(
         try {
             val input = socket.getInputStream().buffered()
             while (!finished.get()) {
-                val f = LinkCodec.read(input, 4096) ?: return fail("La box a fermé la session")
+                val f = LinkCodec.read(input, 4096) ?: return fail(CloseReason.BOX_CLOSED)
                 when (f.type) {
                     LinkType.KEYREQ -> onKeyFrameRequested()
-                    LinkType.BYE -> return fail("La box a fermé la session")
+                    LinkType.BYE -> return fail(CloseReason.BOX_CLOSED)
                     else -> {} // PING : la réception suffit à remettre le délai à zéro
                 }
             }
         } catch (_: SocketTimeoutException) {
-            fail("La box ne répond plus")
+            fail(CloseReason.BOX_SILENT)
         } catch (_: Exception) {
-            fail("Connexion avec la box perdue")
+            fail(CloseReason.CONNECTION_LOST)
         }
     }
 

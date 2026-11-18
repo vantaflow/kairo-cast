@@ -60,7 +60,7 @@ class MainActivity : Activity() {
     private var single = true
 
     private fun phaseLabel(s: SlotState?): String = when (s?.phase) {
-        SlotPhase.MIRRORING -> getString(R.string.slot_mirroring, s.width, s.height)
+        SlotPhase.MIRRORING -> latinString(R.string.slot_mirroring, s.width, s.height)
         SlotPhase.MAC_WAITING -> getString(R.string.slot_mac_waiting)
         SlotPhase.SATURATED -> getString(R.string.slot_saturated)
         SlotPhase.WAITING -> getString(R.string.slot_waiting)
@@ -92,7 +92,7 @@ class MainActivity : Activity() {
     private fun render(s: Status) {
         when (s) {
             is Status.Mirroring -> {
-                statusView.text = if (single && s is Status.Mirroring) getString(R.string.status_mirroring, s.width, s.height) else ""
+                statusView.text = if (single && s is Status.Mirroring) latinString(R.string.status_mirroring, s.width, s.height) else ""
                 if (resume.visibility != View.VISIBLE) {
                     resume.visibility = View.VISIBLE
                     resume.requestFocus()

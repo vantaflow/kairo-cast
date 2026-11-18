@@ -179,9 +179,9 @@ class MirrorActivity : Activity() {
         settings.setSlotDisplayMode(slot, next)
         relayout()
         val label = when (next) {
-            DisplayMode.FILL -> "Remplir"
-            DisplayMode.STRETCH -> "Étirer"
-            DisplayMode.FIT -> "Ajuster"
+            DisplayMode.FILL -> getString(R.string.mode_fill)
+            DisplayMode.STRETCH -> getString(R.string.mode_stretch)
+            DisplayMode.FIT -> getString(R.string.mode_fit)
         }
         toast?.cancel()
         toast = Toast.makeText(this, label, Toast.LENGTH_SHORT).also { it.show() }

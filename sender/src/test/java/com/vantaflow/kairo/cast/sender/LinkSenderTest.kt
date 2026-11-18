@@ -26,7 +26,7 @@ class LinkSenderTest {
                     while (true) { val f = LinkCodec.read(input) ?: break; frames.add(f); if (f.type == LinkType.BYE) break }
                 }
             }.apply { start() }
-            val closed = LinkedBlockingQueue<String>()
+            val closed = LinkedBlockingQueue<Any>()
             val l = LinkSender("127.0.0.1", ss.localPort, hello, {}, { closed.add(it ?: "ici") }, log = {})
             l.connect()
             l.sendVideo(byteArrayOf(0, 0, 0, 1, 0x65), true, 1000)
@@ -52,7 +52,7 @@ class LinkSenderTest {
     @Test fun keyRequestAndByeFromTheBox() {
         ServerSocket(0).use { ss ->
             val keyReq = CountDownLatch(1)
-            val closed = LinkedBlockingQueue<String>()
+            val closed = LinkedBlockingQueue<Any>()
             val server = Thread {
                 ss.accept().use { s ->
                     LinkCodec.read(s.getInputStream()) // HELLO
@@ -65,18 +65,18 @@ class LinkSenderTest {
             val l = LinkSender("127.0.0.1", ss.localPort, hello, { keyReq.countDown() }, { closed.add(it ?: "ici") }, log = {})
             l.connect()
             assertTrue(keyReq.await(2, TimeUnit.SECONDS))
-            assertEquals("La box a fermé la session", closed.poll(2, TimeUnit.SECONDS))
+            assertEquals(CloseReason.BOX_CLOSED, closed.poll(2, TimeUnit.SECONDS))
             server.join(2000)
         }
     }
 
     @Test fun silentBoxTimesOut() {
         ServerSocket(0).use { ss ->
-            val closed = LinkedBlockingQueue<String>()
+            val closed = LinkedBlockingQueue<Any>()
             val server = Thread { ss.accept().use { Thread.sleep(1500) } }.apply { start() }
             val l = LinkSender("127.0.0.1", ss.localPort, hello, {}, { closed.add(it ?: "ici") }, timeoutMs = 300, pingMs = 100, log = {})
             l.connect()
-            assertEquals("La box ne répond plus", closed.poll(2, TimeUnit.SECONDS))
+            assertEquals(CloseReason.BOX_SILENT, closed.poll(2, TimeUnit.SECONDS))
             server.join(3000)
         }
     }
@@ -92,7 +92,7 @@ class LinkSenderTest {
             }.apply { start() }
             val st = BoxStatus.query("127.0.0.1", ss.localPort)
             assertNotNull(st)
-            assertEquals("occupée par PC", st!!.describe())
+            assertEquals(Occupancy.ByDevice("PC"), st!!.occupancy())
             server.join(2000)
         }
     }

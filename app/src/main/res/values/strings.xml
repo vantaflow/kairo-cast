@@ -53,4 +53,10 @@
     <string name="save">Enregistrer</string>
     <string name="cancel">Annuler</string>
     <string name="tile_saturated">%1$s : trop de sources affichées</string>
+    <string name="notif_channel">Récepteur AirPlay</string>
+    <string name="notif_starting">Démarrage…</string>
+    <string name="notif_error">Erreur : récepteur indisponible</string>
+    <string name="notif_mirroring">Recopie : %1$s</string>
+    <string name="notif_ready">Prêt : %1$s</string>
+    <string name="notif_with_audio">%1$s (son)</string>
 </resources>

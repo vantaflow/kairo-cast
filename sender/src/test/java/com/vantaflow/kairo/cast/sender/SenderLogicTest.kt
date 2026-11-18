@@ -58,10 +58,11 @@ class SenderLogicTest {
     }
 
     @Test fun statusParseAndDescribe() {
-        assertEquals("libre", BoxStatus.parse("""{"busy":false,"source":"","by":""}""".toByteArray())!!.describe())
-        assertEquals("occupée par PC-SALLE", BoxStatus.parse("""{"busy":true,"source":"link","by":"PC-SALLE"}""".toByteArray())!!.describe())
-        assertEquals("occupée (Mac ou iPhone)", BoxStatus.parse("""{"busy":true,"source":"airplay","by":""}""".toByteArray())!!.describe())
-        assertEquals("occupée", BoxStatus.parse("""{"busy":true}""".toByteArray())!!.describe())
+        assertEquals(Occupancy.Free, BoxStatus.parse("""{"busy":false,"source":"","by":""}""".toByteArray())!!.occupancy())
+        assertEquals(Occupancy.ByDevice("PC-SALLE"), BoxStatus.parse("""{"busy":true,"source":"link","by":"PC-SALLE"}""".toByteArray())!!.occupancy())
+        assertEquals(Occupancy.ByApple, BoxStatus.parse("""{"busy":true,"source":"airplay","by":""}""".toByteArray())!!.occupancy())
+        assertEquals(Occupancy.Busy, BoxStatus.parse("""{"busy":true}""".toByteArray())!!.occupancy())
+        assertEquals(Occupancy.Busy, BoxStatus.parse("""{"busy":true,"source":"link","by":""}""".toByteArray())!!.occupancy())
         assertNull(BoxStatus.parse("{}".toByteArray()))
         assertNull(BoxStatus.parse("pas du json".toByteArray()))
         assertNull(BoxStatus.parse("""{"busy":"oui"}""".toByteArray()))

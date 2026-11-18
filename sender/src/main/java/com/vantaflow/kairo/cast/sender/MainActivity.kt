@@ -133,7 +133,7 @@ class MainActivity : Activity() {
             val st = status[b.id]
             val state = when {
                 here -> getString(R.string.state_here)
-                st != null -> st.describe()
+                st != null -> describe(st)
                 b.id in status -> getString(R.string.state_unknown)
                 else -> ""
             }
@@ -155,12 +155,19 @@ class MainActivity : Activity() {
     }
     private var lastToast = ""
 
+    private fun describe(st: BoxStatus): String = when (val o = st.occupancy()) {
+        Occupancy.Free -> getString(R.string.state_free)
+        is Occupancy.ByDevice -> getString(R.string.state_busy_by, o.name)
+        Occupancy.ByApple -> getString(R.string.state_busy_apple)
+        Occupancy.Busy -> getString(R.string.state_busy)
+    }
+
     private fun choose(b: Box) {
         val st = status[b.id]
         if (st?.busy == true) {
             AlertDialog.Builder(this)
                 .setTitle(R.string.busy_title)
-                .setMessage(getString(R.string.busy_message, b.name, st.describe()))
+                .setMessage(getString(R.string.busy_message, b.name, describe(st)))
                 .setPositiveButton(R.string.share) { _, _ -> ask(b) }
                 .setNegativeButton(R.string.cancel, null)
                 .show()

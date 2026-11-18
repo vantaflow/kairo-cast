@@ -94,10 +94,10 @@ class ReceiverService : Service() {
     private fun enterForeground() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Récepteur AirPlay", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL, getString(R.string.notif_channel), NotificationManager.IMPORTANCE_LOW)
         )
         startForeground(
-            NOTIF_ID, notification("Démarrage…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            NOTIF_ID, notification(getString(R.string.notif_starting)), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         )
     }
 
@@ -182,10 +182,10 @@ class ReceiverService : Service() {
         val sel = audio.audioSlot
         val mirroring = slots.filter { it.phase == SlotPhase.MIRRORING || it.phase == SlotPhase.SATURATED }
         val text = when {
-            slots.isNotEmpty() && slots.all { it.phase == SlotPhase.ERROR } -> "Erreur : récepteur indisponible"
-            mirroring.isNotEmpty() ->
-                "Recopie : " + mirroring.joinToString(", ") { if (it.slot == sel) "${it.name} (son)" else it.name }
-            else -> "Prêt : " + slots.filter { it.phase != SlotPhase.ERROR }.joinToString(", ") { it.name }
+            slots.isNotEmpty() && slots.all { it.phase == SlotPhase.ERROR } -> getString(R.string.notif_error)
+            mirroring.isNotEmpty() -> getString(R.string.notif_mirroring,
+                mirroring.joinToString(", ") { if (it.slot == sel) getString(R.string.notif_with_audio, it.name) else it.name })
+            else -> getString(R.string.notif_ready, slots.filter { it.phase != SlotPhase.ERROR }.joinToString(", ") { it.name })
         }
         try { setNotificationText(text) } catch (e: Exception) { Log.w(TAG, "notification : $e") }
     }

@@ -79,7 +79,8 @@ class SlotPolicy(
             width in 1..MAX_DIMENSION && height in 1..MAX_DIMENSION
 
         const val DEFAULT_BUDGET = 829_440
-        const val MESSAGE_SATURATED = "Trop de sources pour cette box"
+        /** Ressource texte (@StringRes) du libellé d'un emplacement saturé, traduit à l'affichage. */
+        val MESSAGE_SATURATED: Int = R.string.slot_saturated
         private const val FPS = 30
     }
 }

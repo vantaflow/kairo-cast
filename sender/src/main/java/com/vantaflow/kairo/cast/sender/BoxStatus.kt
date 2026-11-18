@@ -11,12 +11,22 @@ import org.json.JSONObject
  * État d'une source de la box : libre, ou occupée par un Mac/iPhone (AirPlay) ou un appareil Kairo Link.
  * Obtenu par une trame STATUS, sans toucher à la recopie en cours. Une box trop ancienne ne répond pas : null.
  */
+sealed interface Occupancy {
+    object Free : Occupancy
+    /** Occupée par un appareil Kairo Link nommé. */
+    data class ByDevice(val name: String) : Occupancy
+    /** Occupée par un Mac ou un iPhone (AirPlay). */
+    object ByApple : Occupancy
+    object Busy : Occupancy
+}
+
 data class BoxStatus(val busy: Boolean, val source: String, val by: String) {
-    fun describe(): String = when {
-        !busy -> "libre"
-        source == "link" && by.isNotEmpty() -> "occupée par $by"
-        source == "airplay" -> "occupée (Mac ou iPhone)"
-        else -> "occupée"
+    /** Occupation de la source ; le texte est choisi à l'affichage, dans la langue de l'appareil. */
+    fun occupancy(): Occupancy = when {
+        !busy -> Occupancy.Free
+        source == "link" && by.isNotEmpty() -> Occupancy.ByDevice(by)
+        source == "airplay" -> Occupancy.ByApple
+        else -> Occupancy.Busy
     }
 
     companion object {
