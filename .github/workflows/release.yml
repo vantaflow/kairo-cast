@@ -93,7 +93,7 @@ jobs:
           cp sender/build/outputs/apk/release/sender-release.apk out/kairo-cast-envoi.apk
           SIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           for f in out/*.apk; do
-            CERT=$("$SIGNER" verify --print-certs "$f" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            CERT=$("$SIGNER" verify --print-certs "$f" 2>&1 | sed -n 's/^.*certificate SHA-256 digest: //p' | sort -u)
             [ "$CERT" = "$EXPECTED_CERT" ] || { echo "$f : mauvaise clé ($CERT)"; exit 1; }
           done
           rm -f keystore.properties "$RUNNER_TEMP/kairo.jks"
