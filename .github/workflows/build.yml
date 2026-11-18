@@ -8,8 +8,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
@@ -26,11 +26,11 @@ jobs:
             -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
       - name: Tests et APK release
         run: ./gradlew testDebugUnitTest assembleRelease
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: kairo-cast-release
           path: app/build/outputs/apk/release/*.apk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: kairo-cast-envoi-release
           path: sender/build/outputs/apk/release/*.apk
@@ -38,8 +38,8 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: windows/global.json
       - name: Tests
@@ -52,7 +52,7 @@ jobs:
       - name: Renommer l'exécutable
         shell: bash
         run: mv out/KairoCast.exe out/KairoCast-windows.exe
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: KairoCast-windows
           path: out/KairoCast-windows.exe
